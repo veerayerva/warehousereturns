@@ -106,6 +106,23 @@ def get_swagger_doc(req: func.HttpRequest) -> func.HttpResponse:
                         "500": {"description": "Internal server error"}
                     }
                 }
+            },
+            "/health": {
+                "get": {
+                    "summary": "Health check endpoint",
+                    "description": "Provides comprehensive health information about the service and its components",
+                    "responses": {
+                        "200": {
+                            "description": "Service is healthy",
+                            "content": {
+                                "application/json": {
+                                    "schema": {"$ref": "#/components/schemas/HealthStatus"}
+                                }
+                            }
+                        },
+                        "503": {"description": "Service is unhealthy"}
+                    }
+                }
             }
         },
         "components": {
@@ -121,6 +138,19 @@ def get_swagger_doc(req: func.HttpRequest) -> func.HttpResponse:
                         "serial_number": {"type": "string", "example": "SZVOU5GB1600294"},
                         "description": {"type": "string", "example": "ALL-IN-ONE SOUNDBAR"},
                         "vendor_name": {"type": "string", "example": "NIGHT & DAY"}
+                    }
+                },
+                "HealthStatus": {
+                    "type": "object",
+                    "properties": {
+                        "status": {"type": "string", "example": "healthy"},
+                        "timestamp": {"type": "string", "example": "2025-11-19T15:48:42.167368Z"},
+                        "correlation_id": {"type": "string", "example": "ae56a0ab-072c-48a1-9895-90a333cc60ef"},
+                        "version": {"type": "string", "example": "1.0.0"},
+                        "service": {"type": "string", "example": "pieceinfo-api"},
+                        "environment": {"type": "string", "example": "development"},
+                        "components": {"type": "object"},
+                        "configuration": {"type": "object"}
                     }
                 }
             }
@@ -381,7 +411,7 @@ def get_piece_info(req: func.HttpRequest) -> func.HttpResponse:
 
 
 @app.function_name(name="PieceInfoHealthCheck")
-@app.route(route="pieces/health", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+@app.route(route="health", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def health_check(req: func.HttpRequest) -> func.HttpResponse:
     """
     Comprehensive health check endpoint for monitoring and alerting.
