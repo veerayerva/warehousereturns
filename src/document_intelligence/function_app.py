@@ -316,69 +316,6 @@ def _handle_file_upload(req, processing_service, correlation_id):
         logger.error(f"Error processing file upload - Correlation ID: {correlation_id}", exc_info=True)
         return _create_error_response(f"Error processing uploaded file: {str(e)}", 500, correlation_id)
         
-@app.function_name(name="GetAnalysisResult")
-@app.route(route="analysis-result/{operation_id}", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
-def get_analysis_result(req: func.HttpRequest) -> func.HttpResponse:
-    """
-    Retrieve the results of a previous document analysis operation.
-    
-    Path Parameters:
-        operation_id: The operation ID returned from process-document
-        
-    Returns:
-        Analysis results with Serial field extraction and confidence scores
-    """
-    # Generate correlation ID for request tracing
-    correlation_id = _generate_correlation_id()
-    
-    logger.info(f"GetAnalysisResult endpoint called - Correlation ID: {correlation_id}")
-    
-    try:
-        # Get operation ID from route parameters
-        operation_id = req.route_params.get('operation_id')
-        if not operation_id:
-            return _create_error_response("Operation ID is required", 400, correlation_id)
-        
-        logger.info(f"Getting analysis result for operation: {operation_id} - Correlation ID: {correlation_id}")
-        
-        processing_service = get_processing_service()
-        
-        # Get analysis result
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            result = loop.run_until_complete(
-                processing_service.get_analysis_result(operation_id, correlation_id)
-            )
-        finally:
-            loop.close()
-        
-        # Create response
-        response_data = {
-            "operation_id": result.operation_id,
-            "status": result.status,
-            "serial_field": result.serial_field.dict() if result.serial_field else None,
-            "confidence_evaluation": result.confidence_evaluation.dict() if result.confidence_evaluation else None,
-            "blob_storage_info": result.blob_storage_info.dict() if result.blob_storage_info else None,
-            "processing_duration_ms": result.processing_duration_ms,
-            "correlation_id": correlation_id,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-        
-        logger.info(f"Analysis result retrieved successfully - Correlation ID: {correlation_id}")
-        
-        return func.HttpResponse(
-            json.dumps(response_data, indent=2),
-            status_code=200,
-            mimetype=JSON_MIMETYPE,
-            headers=_get_security_headers()
-        )
-        
-    except Exception as e:
-        logger.error(f"Error retrieving analysis result - Correlation ID: {correlation_id}", exc_info=True)
-        return _create_error_response(f"Error retrieving analysis result: {str(e)}", 500, correlation_id)
-
-
 @app.function_name(name="DocumentHealthCheck")
 @app.route(route="health", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def document_health_check(req: func.HttpRequest) -> func.HttpResponse:
@@ -496,24 +433,7 @@ def get_swagger_doc(req: func.HttpRequest) -> func.HttpResponse:
                     }
                 }
             },
-            "/analysis-result/{operation_id}": {
-                "get": {
-                    "summary": "Get analysis result by operation ID",
-                    "parameters": [
-                        {
-                            "name": "operation_id",
-                            "in": "path",
-                            "required": True,
-                            "schema": {"type": "string"}
-                        }
-                    ],
-                    "responses": {
-                        "200": {"description": "Analysis result retrieved successfully"},
-                        "404": {"description": "Operation not found"},
-                        "500": {"description": "Retrieval error"}
-                    }
-                }
-            },
+
             "/health": {
                 "get": {
                     "summary": "Health check endpoint",

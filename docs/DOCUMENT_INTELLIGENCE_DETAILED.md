@@ -80,18 +80,6 @@ src/document_intelligence/
 }
 ```
 
-##### `get_analysis_result(req: func.HttpRequest) -> func.HttpResponse`
-**What it does**: Retrieves previously stored analysis results by analysis ID
-- **HTTP Method**: GET
-- **Route**: `/api/analysis/{analysis_id}`
-- **Authentication**: Function level
-
-**Processing Steps**:
-1. Extract analysis_id from URL path
-2. Query blob storage repository for metadata
-3. Return analysis results with storage information
-4. Handle not-found scenarios gracefully
-
 ##### `health_check(req: func.HttpRequest) -> func.HttpResponse`
 **What it does**: Provides health monitoring for the service and its dependencies
 - **HTTP Method**: GET

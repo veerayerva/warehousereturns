@@ -24,7 +24,6 @@ This Azure Functions project for warehouse returns processing has been fully imp
 
 #### Document Intelligence (`src/document_intelligence/`)
 - ✅ `ProcessDocument`: Handles file uploads and URL-based document processing
-- ✅ `GetAnalysisResult`: Retrieves document analysis results by ID
 - ✅ `DocumentHealthCheck`: Service health monitoring
 - ✅ Integration with Azure Document Intelligence (Form Recognizer)
 - ✅ Comprehensive error handling and logging

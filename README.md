@@ -531,7 +531,6 @@ def my_http_function(req):
 
 ### Document Intelligence API
 - `POST /api/v1/documents/analyze` - Analyze uploaded documents
-- `GET /api/v1/documents/analysis/{id}` - Get analysis results
 - `GET /api/v1/documents/health` - Health check
 
 ### Return Processing API  

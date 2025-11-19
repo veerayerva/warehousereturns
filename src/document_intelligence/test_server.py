@@ -14,7 +14,7 @@ import json
 # Add the current directory to Python path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from function_app import process_document, get_analysis_result, document_health_check, get_swagger_doc, swagger_ui
+from function_app import process_document, document_health_check, get_swagger_doc, swagger_ui
 from azure.functions import HttpRequest, HttpResponse
 
 app = Flask(__name__)
@@ -132,19 +132,6 @@ def process_document_route():
         logger.error(f"Process document error: {e}")
         return jsonify({"error": "Document processing failed", "details": str(e)}), 500
 
-@app.route('/api/analysis-result/<operation_id>', methods=['GET'])
-def get_analysis_result(operation_id):
-    """Get analysis result endpoint"""
-    try:
-        # Add operation_id to the request args
-        request.view_args = {'operation_id': operation_id}
-        mock_req = MockHttpRequest(request)
-        mock_req.route_params = {"operation_id": operation_id}
-        response = get_analysis_result(mock_req)
-        return convert_response(response)
-    except Exception as e:
-        logger.error(f"Get analysis result error: {e}")
-        return jsonify({"error": "Failed to get analysis result", "details": str(e)}), 500
 
 @app.route('/api/swagger', methods=['GET'])
 def swagger_doc():
@@ -180,7 +167,7 @@ def root():
         "available_endpoints": {
             "health": "/api/health",
             "process_document": "/api/process-document",
-            "get_analysis_result": "/api/analysis-result/{operation_id}",
+
             "swagger_doc": "/api/swagger",
             "swagger_ui": "/api/docs"
         }
@@ -192,7 +179,6 @@ if __name__ == '__main__':
     print("Available endpoints:")
     print("  - Health Check: http://localhost:7071/api/health")
     print("  - Process Document: http://localhost:7071/api/process-document")
-    print("  - Analysis Result: http://localhost:7071/api/analysis-result/{operation_id}")
     print("  - Swagger Doc: http://localhost:7071/api/swagger")
     print("  - Swagger UI: http://localhost:7071/api/docs")
     print("  - Root: http://localhost:7071/")

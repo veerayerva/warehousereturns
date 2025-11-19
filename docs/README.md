@@ -130,7 +130,6 @@ APPINSIGHTS_INSTRUMENTATIONKEY=your-app-insights-key
 ```bash
 # Document Intelligence API (Port 7071)
 POST /api/process-document          # Main document processing endpoint
-GET  /api/analysis/{analysis_id}    # Retrieve analysis results  
 GET  /api/health                    # Service health check
 GET  /api/swagger                   # OpenAPI specification
 GET  /api/docs                      # Swagger UI documentation
