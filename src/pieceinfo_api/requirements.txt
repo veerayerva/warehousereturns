@@ -1,0 +1,41 @@
+# ===================================================
+# PieceInfo API Dependencies - Production Ready
+# ===================================================
+
+# Core Azure Functions Runtime
+azure-functions>=1.18.0,<2.0.0
+
+# HTTP Client for External API Integration  
+httpx>=0.25.0,<1.0.0
+
+# JSON and Data Handling (built-in Python modules used)
+# Note: Removed Pydantic as we use plain dictionaries for simplicity
+
+# Logging and Monitoring
+opencensus-ext-azure>=1.1.13,<2.0.0
+opencensus-ext-logging>=0.1.1,<1.0.0
+
+# Development and Testing Dependencies
+pytest>=7.4.0,<8.0.0
+pytest-asyncio>=0.21.0,<1.0.0
+pytest-cov>=4.1.0,<5.0.0
+requests>=2.31.0,<3.0.0  # For testing HTTP endpoints
+
+# Security and SSL Support (built into httpx and Python)
+certifi>=2023.7.22  # Certificate authority bundle
+
+# Performance Monitoring (optional)
+psutil>=5.9.0,<6.0.0  # System resource monitoring
+
+# Code Quality and Linting (development only)
+flake8>=6.0.0,<7.0.0
+black>=23.7.0,<24.0.0
+mypy>=1.5.0,<2.0.0
+
+# ===================================================
+# Notes:
+# - All versions pinned for reproducible builds
+# - Removed unused dependencies (aiohttp, aiofiles, pydantic)  
+# - Added testing and development tools
+# - Focus on minimal, production-ready dependencies
+# ===================================================

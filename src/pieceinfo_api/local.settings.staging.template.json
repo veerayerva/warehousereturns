@@ -1,0 +1,34 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "APPLICATIONINSIGHTS_CONNECTION_STRING": "InstrumentationKey=<your-dev-key>",
+    
+    "_comment_api_config": "=== API Configuration ===",
+    "EXTERNAL_API_BASE_URL": "https://apim-staging.nfm.com",
+    "OCP_APIM_SUBSCRIPTION_KEY": "<your-staging-subscription-key>",
+    "API_TIMEOUT_SECONDS": "30",
+    "API_MAX_RETRIES": "3",
+    "MAX_BATCH_SIZE": "10",
+    
+    "_comment_ssl_config": "=== SSL/HTTPS Configuration ===",
+    "VERIFY_SSL": "true",
+    "SSL_CERT_PATH": "",
+    "SSL_KEY_PATH": "",
+    "SSL_CA_BUNDLE": "",
+    
+    "_comment_environment": "=== Environment Settings ===",
+    "LOG_LEVEL": "DEBUG",
+    "WAREHOUSE_RETURNS_ENV": "staging",
+    
+    "_comment_security": "=== Security Settings ===",
+    "ENABLE_DEBUG_LOGGING": "true",
+    "CORS_ORIGINS": "*"
+  },
+  "Host": {
+    "LocalHttpPort": 7074,
+    "CORS": "*",
+    "CORSCredentials": false
+  }
+}
