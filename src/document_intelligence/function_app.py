@@ -246,7 +246,7 @@ def _handle_json_request(req, processing_service, correlation_id):
         asyncio.set_event_loop(loop)
         try:
             result = loop.run_until_complete(
-                processing_service.process_document_from_url(url_request.document_url, correlation_id)
+                processing_service.process_document_from_url(url_request, correlation_id)
             )
         finally:
             loop.close()

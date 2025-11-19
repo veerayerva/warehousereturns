@@ -5,7 +5,7 @@ Defines Pydantic models for parsing responses from Azure Document Intelligence A
 These models handle the complex nested structure returned by the Azure service.
 """
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, ConfigDict
 from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
 
@@ -58,7 +58,7 @@ class BoundingRegion(BaseModel):
 
     class Config:
         """Pydantic model configuration."""
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "pageNumber": 1,
                 "polygon": [326, 298, 328, 218, 337, 218, 335, 298]
@@ -168,7 +168,7 @@ class DocumentField(BaseModel):
 
     class Config:
         """Pydantic model configuration."""
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "type": "string",
                 "valueString": "ZZ381562N",
@@ -369,9 +369,9 @@ class AnalyzeResult(BaseModel):
 
     class Config:
         """Pydantic model configuration."""
-        schema_extra = {
+        json_schema_extra = {
             "example": {
-                "apiVersion": "2024-11-30",
+                "apiVersion": "2023-07-31",
                 "modelId": "serialnumber",
                 "stringIndexType": "utf16CodeUnit",
                 "content": "Profile\\nPFW955SPWOGN\\nPFW 955 SPW GN\\nof Registration Scan for Service\\nZZ381562N\\n0 84691 94838\\n4",

@@ -5,7 +5,7 @@ Defines Pydantic models for document analysis requests supporting both URL-based
 and file upload scenarios with comprehensive validation.
 """
 
-from pydantic import BaseModel, Field, HttpUrl, validator
+from pydantic import BaseModel, Field, HttpUrl, validator, ConfigDict
 from typing import Optional, Dict, Any
 from enum import Enum
 
@@ -121,12 +121,14 @@ class DocumentAnalysisUrlRequest(BaseModel):
         
         return url_str
 
+    model_config = ConfigDict(protected_namespaces=())
+    
     class Config:
         """Pydantic model configuration."""
         json_encoders = {
             HttpUrl: str
         }
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "document_url": "https://storage.azure.com/documents/serial-label-001.jpg",
                 "document_type": "serialnumber", 
@@ -269,9 +271,11 @@ class DocumentAnalysisFileRequest(BaseModel):
         
         return True
 
+    model_config = ConfigDict(protected_namespaces=())
+    
     class Config:
         """Pydantic model configuration."""
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "document_type": "serialnumber",
                 "model_id": "serialnumber", 
