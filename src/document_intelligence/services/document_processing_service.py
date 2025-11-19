@@ -53,13 +53,45 @@ class DocumentProcessingService:
         enable_blob_storage: Optional[bool] = None
     ):
         """
-        Initialize the Document Processing service.
+        Initialize the Document Processing service with all dependencies and configuration.
+        
+        This constructor sets up the complete document processing pipeline including:
+        - Azure Document Intelligence service for AI-powered field extraction
+        - Blob storage repository for low-confidence document management
+        - Confidence threshold evaluation for document quality assessment
+        - Environment-based configuration for production flexibility
+        
+        The service follows a dependency injection pattern where external services can be
+        provided for testing, or will be auto-created using environment configuration.
         
         Args:
-            doc_intel_service (Optional[DocumentIntelligenceService]): Document Intelligence service
-            blob_repository (Optional[BlobStorageRepository]): Blob storage repository
-            confidence_threshold (Optional[float]): Confidence threshold (default from env)
-            enable_blob_storage (Optional[bool]): Enable blob storage (default from env)
+            doc_intel_service (Optional[DocumentIntelligenceService]): 
+                Pre-configured Azure Document Intelligence service instance.
+                If None, creates a new instance using environment variables:
+                - DOCUMENT_INTELLIGENCE_ENDPOINT
+                - DOCUMENT_INTELLIGENCE_KEY
+                - DOCUMENT_INTELLIGENCE_API_VERSION
+                - DEFAULT_MODEL_ID
+                
+            blob_repository (Optional[BlobStorageRepository]): 
+                Pre-configured blob storage repository for document storage.
+                If None and blob storage is enabled, creates new instance using:
+                - AZURE_STORAGE_CONNECTION_STRING
+                - BLOB_CONTAINER_PREFIX
+                
+            confidence_threshold (Optional[float]): 
+                Minimum confidence score (0.0-1.0) for accepting extracted fields.
+                If None, uses CONFIDENCE_THRESHOLD environment variable (default: 0.7).
+                Documents below this threshold are stored for manual review.
+                
+            enable_blob_storage (Optional[bool]): 
+                Whether to enable automatic storage of low-confidence documents.
+                If None, uses ENABLE_BLOB_STORAGE environment variable (default: true).
+                When enabled, documents below confidence threshold are stored with metadata.
+                
+        Raises:
+            Exception: If required Azure Document Intelligence configuration is missing
+            Exception: If blob storage is enabled but Azure Storage configuration is invalid
         """
         # Get logger for this service
         self.logger = get_logger('warehouse_returns.document_intelligence.processing')
@@ -73,17 +105,36 @@ class DocumentProcessingService:
         
         self.enable_blob_storage = enable_blob_storage
         
+        self.logger.info(
+            f"[BLOB-STORAGE-INIT] Initializing blob storage configuration - "
+            f"Enabled: {self.enable_blob_storage}, "
+            f"Env-Setting: {os.getenv('ENABLE_BLOB_STORAGE', 'not_set')}, "
+            f"Connection-String-Set: {bool(os.getenv('AZURE_STORAGE_CONNECTION_STRING'))}"
+        )
+        
         if self.enable_blob_storage:
             try:
-                self.blob_repository = blob_repository or BlobStorageRepository()
+                # Get container name from environment variable
+                container_name = os.getenv('BLOB_CONTAINER_PREFIX', 'document-intelligence')
+                self.blob_repository = blob_repository or BlobStorageRepository(
+                    container_name=container_name
+                )
+                self.logger.info(
+                    f"[BLOB-STORAGE-INIT] Blob storage repository initialized successfully - "
+                    f"Container: {getattr(self.blob_repository, 'container_name', 'unknown')}, "
+                    f"Container-From-Env: {container_name}"
+                )
             except Exception as e:
                 self.logger.warning(
-                    "Blob storage not available, disabling low-confidence document storage",
-                    exception=e
+                    f"[BLOB-STORAGE-INIT] Blob storage not available, disabling low-confidence document storage - "
+                    f"Error: {type(e).__name__}: {str(e)}"
                 )
                 self.enable_blob_storage = False
                 self.blob_repository = None
         else:
+            self.logger.info(
+                "[BLOB-STORAGE-INIT] Blob storage disabled via configuration"
+            )
             self.blob_repository = None
         
         # Configuration
@@ -180,8 +231,23 @@ class DocumentProcessingService:
             
             # Step 6: Handle low-confidence documents (store for review if enabled)
             blob_storage_info = None
+            
+            self.logger.info(
+                f"[BLOB-STORAGE-DECISION] Evaluating blob storage criteria - Analysis: {analysis_id}, "
+                f"Confidence: {azure_confidence} vs Threshold: {effective_threshold}, "
+                f"Meets-Threshold: {meets_threshold}, Extraction-Success: {extraction_success}, "
+                f"Blob-Enabled: {self.enable_blob_storage}, Repo-Available: {bool(self.blob_repository)}, "
+                f"URL: {str(request.document_url)[:50]}..., Correlation: {correlation_id}"
+            )
+            
             if (not meets_threshold and extraction_success and 
                 self.enable_blob_storage and self.blob_repository):
+                
+                self.logger.info(
+                    "[BLOB-STORAGE-DECISION] Document qualifies for blob storage - proceeding with URL download",
+                    analysis_id=analysis_id,
+                    correlation_id=correlation_id
+                )
                 
                 try:
                     # For URL documents, we need to download first to store in blob
@@ -208,11 +274,27 @@ class DocumentProcessingService:
                         
                 except Exception as e:
                     self.logger.warning(
-                        "Failed to store low-confidence URL document",
+                        "[BLOB-STORAGE-ERROR] Failed to store low-confidence URL document",
                         analysis_id=analysis_id,
-                        exception=e,
+                        exception=str(e),
+                        exception_type=type(e).__name__,
                         correlation_id=correlation_id
                     )
+            else:
+                skip_reasons = []
+                if meets_threshold:
+                    skip_reasons.append(f"confidence_meets_threshold({azure_confidence}>={effective_threshold})")
+                if not extraction_success:
+                    skip_reasons.append("extraction_failed")
+                if not self.enable_blob_storage:
+                    skip_reasons.append("blob_storage_disabled")
+                if not self.blob_repository:
+                    skip_reasons.append("blob_repository_unavailable")
+                
+                self.logger.info(
+                    f"[BLOB-STORAGE-DECISION] Skipping blob storage - Analysis: {analysis_id}, "
+                    f"Skip-Reasons: {skip_reasons}, URL: {str(request.document_url)[:50]}..., Correlation: {correlation_id}"
+                )
             
             # Step 7: Create and return response
             completed_time = datetime.utcnow()
@@ -286,15 +368,68 @@ class DocumentProcessingService:
         """
         Process a document from byte data through the complete analysis workflow.
         
+        This method orchestrates the end-to-end document processing pipeline:
+        1. Validates input document data and metadata
+        2. Sends document to Azure Document Intelligence for AI analysis
+        3. Extracts serial number fields with confidence scoring
+        4. Evaluates confidence against configured thresholds
+        5. Routes low-confidence documents to blob storage for manual review
+        6. Returns comprehensive analysis results with storage information
+        
+        The method implements the core business logic for document quality assessment:
+        - High confidence (≥ threshold): Results returned immediately
+        - Low confidence (< threshold): Document stored for review and retraining
+        - Extraction failures: Error responses with detailed context
+        
         Args:
-            document_data (bytes): Document file content
-            filename (str): Original filename
-            content_type (str): MIME type of the document
-            request (DocumentAnalysisFileRequest): File-based analysis request
-            correlation_id (Optional[str]): Correlation ID for tracing
-            
+            document_data (bytes): 
+                Raw binary document content (PDF, JPEG, PNG, TIFF formats).
+                Must be valid document format supported by Azure Document Intelligence.
+                Maximum size controlled by MAX_FILE_SIZE_MB environment variable.
+                
+            filename (str): 
+                Original document filename for metadata and storage organization.
+                Used for file extension detection and storage path generation.
+                Should include file extension for proper MIME type handling.
+                
+            content_type (str): 
+                MIME type of the document (e.g., 'application/pdf', 'image/jpeg').
+                Used for Azure Document Intelligence format specification.
+                Must match SUPPORTED_CONTENT_TYPES environment configuration.
+                
+            request (DocumentAnalysisFileRequest): 
+                Structured analysis request with processing parameters:
+                - model_id: Azure Document Intelligence model identifier
+                - document_type: Business context for the document
+                - confidence_threshold: Optional override for quality threshold
+                
+            correlation_id (Optional[str]): 
+                Unique identifier for request tracking across service boundaries.
+                If None, generates new correlation ID for this processing session.
+                Used for distributed tracing and log correlation.
+                
         Returns:
-            DocumentAnalysisResponse: Complete analysis results with field extraction
+            DocumentAnalysisResponse: 
+                Comprehensive analysis results containing:
+                - analysis_id: Unique identifier for this analysis
+                - status: Processing outcome (completed/failed)
+                - serial_field: Extracted serial number with confidence score
+                - blob_storage_info: Storage details if document was stored
+                - processing_metadata: Performance and model information
+                - correlation_id: Request tracking identifier
+                
+        Raises:
+            Exception: Critical processing failures (network, authentication, etc.)
+            
+        Example:
+            >>> document_bytes = open('return_doc.pdf', 'rb').read()
+            >>> request = DocumentAnalysisFileRequest(model_id='serialnumber')
+            >>> response = await service.process_document_from_bytes(
+            ...     document_bytes, 'return_doc.pdf', 'application/pdf', request
+            ... )
+            >>> print(f"Serial: {response.serial_field.value}")
+            >>> if response.blob_storage_info:
+            ...     print(f"Stored for review: {response.blob_storage_info['storage_url']}")
         """
         # Generate analysis ID and correlation ID if not provided
         analysis_id = f"analysis-{uuid.uuid4()}"
@@ -368,8 +503,25 @@ class DocumentProcessingService:
             
             # Step 6: Handle low-confidence documents (store for review if enabled)
             blob_storage_info = None
+            
+            self.logger.info(
+                f"[BLOB-STORAGE-DECISION] Evaluating blob storage criteria - Analysis: {analysis_id}, "
+                f"Confidence: {azure_confidence} vs Threshold: {effective_threshold}, "
+                f"Meets-Threshold: {meets_threshold}, Extraction-Success: {extraction_success}, "
+                f"Blob-Enabled: {self.enable_blob_storage}, Repo-Available: {bool(self.blob_repository)}, "
+                f"Filename: {filename}, Correlation: {correlation_id}"
+            )
+            
             if (not meets_threshold and extraction_success and 
                 self.enable_blob_storage and self.blob_repository):
+                
+                self.logger.info(
+                    "[BLOB-STORAGE-DECISION] Document qualifies for blob storage - proceeding with storage",
+                    analysis_id=analysis_id,
+                    filename=filename,
+                    file_size_bytes=len(document_data),
+                    correlation_id=correlation_id
+                )
                 
                 blob_info, blob_error = await self._store_low_confidence_document(
                     analysis_id=analysis_id,
@@ -390,13 +542,37 @@ class DocumentProcessingService:
                 
                 if blob_info:
                     blob_storage_info = blob_info
-                elif blob_error:
-                    self.logger.warning(
-                        "Failed to store low-confidence document",
+                    self.logger.info(
+                        "[BLOB-STORAGE-SUCCESS] Document stored successfully",
                         analysis_id=analysis_id,
-                        error_code=blob_error.error_code,
+                        blob_path=blob_info.get('document_blob_path'),
+                        storage_url=blob_info.get('storage_url'),
                         correlation_id=correlation_id
                     )
+                elif blob_error:
+                    self.logger.warning(
+                        "[BLOB-STORAGE-ERROR] Failed to store low-confidence document",
+                        analysis_id=analysis_id,
+                        error_code=blob_error.error_code,
+                        error_message=blob_error.message,
+                        error_details=blob_error.details,
+                        correlation_id=correlation_id
+                    )
+            else:
+                skip_reasons = []
+                if meets_threshold:
+                    skip_reasons.append(f"confidence_meets_threshold({azure_confidence}>={effective_threshold})")
+                if not extraction_success:
+                    skip_reasons.append("extraction_failed")
+                if not self.enable_blob_storage:
+                    skip_reasons.append("blob_storage_disabled")
+                if not self.blob_repository:
+                    skip_reasons.append("blob_repository_unavailable")
+                
+                self.logger.info(
+                    f"[BLOB-STORAGE-DECISION] Skipping blob storage - Analysis: {analysis_id}, "
+                    f"Skip-Reasons: {skip_reasons}, Filename: {filename}, Correlation: {correlation_id}"
+                )
             
             # Step 7: Create and return response
             completed_time = datetime.utcnow()
@@ -529,6 +705,17 @@ class DocumentProcessingService:
             Tuple[Optional[Dict[str, str]], Optional[ErrorResponse]]:
                 Storage info and error (if any)
         """
+        self.logger.info(
+            "[BLOB-STORAGE-STORE] Starting low-confidence document storage",
+            analysis_id=analysis_id,
+            filename=filename,
+            content_type=content_type,
+            file_size_bytes=len(document_data),
+            serial_confidence=serial_field.confidence,
+            raw_extracted_value=serial_field.extraction_metadata.get('raw_extracted_value'),
+            correlation_id=correlation_id
+        )
+        
         analysis_metadata = {
             "serial_field": {
                 "value": serial_field.value,
@@ -540,14 +727,42 @@ class DocumentProcessingService:
             "requires_review_reason": "Low confidence score"
         }
         
-        return await self.blob_repository.store_low_confidence_document(
-            analysis_id=analysis_id,
-            document_data=document_data,
-            filename=filename,
-            content_type=content_type,
-            analysis_metadata=analysis_metadata,
-            correlation_id=correlation_id
-        )
+        try:
+            result = self.blob_repository.store_low_confidence_document(
+                analysis_id=analysis_id,
+                document_data=document_data,
+                filename=filename,
+                content_type=content_type,
+                analysis_metadata=analysis_metadata,
+                correlation_id=correlation_id
+            )
+            
+            self.logger.info(
+                "[BLOB-STORAGE-STORE] Blob repository call completed",
+                analysis_id=analysis_id,
+                success=result[0] is not None,
+                error=result[1] is not None,
+                correlation_id=correlation_id
+            )
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(
+                "[BLOB-STORAGE-STORE] Exception during blob storage",
+                analysis_id=analysis_id,
+                exception=str(e),
+                exception_type=type(e).__name__,
+                correlation_id=correlation_id
+            )
+            
+            error_response = ErrorResponse(
+                error_code=ErrorCode.BLOB_STORAGE_ERROR,
+                message="Exception during blob storage",
+                details=str(e),
+                correlation_id=correlation_id
+            )
+            return None, error_response
 
     async def _download_document_from_url(self, url: str) -> Optional[bytes]:
         """
@@ -654,7 +869,7 @@ class DocumentProcessingService:
             
             # Check Blob Storage service (if enabled)
             if self.enable_blob_storage and self.blob_repository:
-                blob_health = await self.blob_repository.health_check()
+                blob_health = self.blob_repository.health_check()
                 health_results["components"]["blob_storage"] = blob_health
             else:
                 health_results["components"]["blob_storage"] = {

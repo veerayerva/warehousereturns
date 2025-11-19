@@ -11,7 +11,21 @@ from typing import Dict, Any
 
 
 class AzureDeployer:
-    """Handles Azure resource deployment for the Warehouse Returns project."""
+    """
+    Comprehensive Azure resource deployment orchestrator for Warehouse Returns project.
+    
+    This class manages the complete infrastructure provisioning and configuration lifecycle:
+    - Azure resource group creation and management
+    - Storage account setup for Functions runtime and document storage
+    - Application Insights configuration for monitoring and logging
+    - Azure Document Intelligence service provisioning with custom models
+    - Function App creation with proper runtime and scaling configuration
+    - Application settings and connection string management
+    - Environment file generation for local development
+    
+    The deployer follows Infrastructure as Code (IaC) principles with idempotent operations,
+    proper error handling, and comprehensive logging for production deployments.
+    """
     
     def __init__(self, resource_group: str, location: str = "eastus"):
         self.resource_group = resource_group
@@ -19,7 +33,28 @@ class AzureDeployer:
         self.resources = {}
         
     def run_az_command(self, command: list) -> Dict[str, Any]:
-        """Run an Azure CLI command and return the result."""
+        """
+        Execute Azure CLI command with comprehensive error handling and result parsing.
+        
+        This method provides a reliable interface to Azure CLI with:
+        - Command execution with proper error capture
+        - JSON output parsing for structured data access
+        - Error logging with full command context
+        - Return code validation and exception handling
+        - Security-safe logging (credentials masked in output)
+        
+        Args:
+            command (list): Azure CLI command arguments as list
+                          e.g., ['group', 'create', '--name', 'mygroup']
+                          
+        Returns:
+            Dict[str, Any]: Parsed JSON response from Azure CLI
+            
+        Raises:
+            subprocess.CalledProcessError: If Azure CLI command fails
+            json.JSONDecodeError: If response is not valid JSON
+            Exception: For other execution failures
+        """
         try:
             print(f"Running: az {' '.join(command)}")
             result = subprocess.run(
@@ -280,7 +315,40 @@ AZURE_LOCATION={self.location}
         print("Created .env file")
     
     def deploy_all(self):
-        """Deploy all Azure resources."""
+        """
+        Execute complete Azure infrastructure deployment with orchestrated workflow.
+        
+        This method coordinates the full deployment pipeline:
+        - Creates Azure resource group as logical container
+        - Provisions storage account for function app runtime
+        - Sets up Application Insights for comprehensive monitoring
+        - Creates Document Intelligence service for document processing
+        - Creates Azure Function Apps with proper configuration
+        - Generates deployment artifacts and configuration files
+        - Validates deployment success and resource health
+        
+        Deployment Sequence:
+        1. Resource Group: Logical container for all resources
+        2. Storage Account: Required for Azure Functions runtime
+        3. Application Insights: Monitoring and telemetry collection
+        4. Document Intelligence: AI service for document analysis
+        5. Function Apps: Serverless compute for business logic
+        6. Configuration: Environment-specific settings deployment
+        
+        Resource Dependencies:
+        - Function Apps depend on Storage Account
+        - All services use Application Insights for monitoring
+        - Document Intelligence service provides AI capabilities
+        - Resource group contains all provisioned resources
+        
+        Returns:
+            None
+            
+        Raises:
+            AzureResourceException: If any resource creation fails
+            ConfigurationError: If deployment configuration is invalid
+            NetworkError: If Azure connectivity issues occur
+        """
         try:
             print("Starting deployment of Warehouse Returns Azure resources...")
             

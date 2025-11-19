@@ -10,7 +10,33 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
 
 def test_model_imports():
-    """Test that all models can be imported correctly."""
+    """
+    Validate model import integrity after code reorganization.
+    
+    This function performs comprehensive validation of model imports to ensure:
+    - All model classes can be imported without syntax errors
+    - Model dependencies and relationships are correctly resolved
+    - Import paths are valid after code restructuring
+    - No circular import dependencies exist
+    - Model inheritance chains are properly established
+    
+    Test Coverage:
+    - PieceInventory models for inventory data structures
+    - ProductMaster models for product information
+    - Vendor models for supplier data management
+    - VendorDetails models for extended vendor information
+    - AggregatedPieceInfo models for combined data responses
+    - Document Intelligence models for AI service integration
+    - Error response models for standardized error handling
+    
+    Returns:
+        None (prints success/failure messages)
+        
+    Raises:
+        ImportError: If any model fails to import
+        SyntaxError: If model files contain syntax errors
+        ModuleNotFoundError: If module paths are incorrect
+    """
     
     try:
         print("Testing model imports...")

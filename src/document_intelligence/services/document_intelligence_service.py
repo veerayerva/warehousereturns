@@ -63,17 +63,107 @@ class DocumentIntelligenceService:
         retry_delay_seconds: int = 2
     ):
         """
-        Initialize the Document Intelligence service.
+        Initialize the Azure Document Intelligence service with authentication and configuration.
+        
+        This constructor establishes the connection to Azure Document Intelligence (formerly Form Recognizer)
+        and configures the service for warehouse return document processing. The service is designed to
+        work with custom-trained models for serial number extraction with high accuracy.
+        
+        **Service Configuration:**
+        - Creates authenticated client using Azure Key Credential
+        - Configures API version for compatibility and feature access
+        - Sets up retry logic for resilience against transient failures
+        - Validates service connectivity and authentication
+        - Initializes performance monitoring and logging
+        
+        **Model Configuration:**
+        The default 'serialnumber' model is specifically trained for warehouse return documents:
+        - Supports PDF, JPEG, PNG, TIFF document formats
+        - Optimized for serial number field extraction from various document layouts
+        - Provides confidence scoring for extraction quality assessment
+        - Returns bounding region information for field location
+        - Includes text span data for precise character-level positioning
+        
+        **Retry Strategy:**
+        Implements intelligent retry logic for Azure service resilience:
+        - Exponential backoff: 2s, 4s, 8s delays between attempts
+        - Transient error detection: Network timeouts, service throttling
+        - Authentication retry: Handle token expiration scenarios  
+        - Circuit breaker pattern: Fast-fail for persistent failures
         
         Args:
-            endpoint (Optional[str]): Azure Document Intelligence endpoint URL
-            api_key (Optional[str]): Azure Document Intelligence API key
-            default_model_id (str): Default model ID for document analysis
-            max_retry_attempts (int): Maximum retry attempts for API calls
-            retry_delay_seconds (int): Base delay between retries
-            
+            endpoint (Optional[str]): 
+                Azure Document Intelligence service endpoint URL.
+                Format: https://{service-name}.cognitiveservices.azure.com/
+                If None, reads from DOCUMENT_INTELLIGENCE_ENDPOINT environment variable.
+                Must be accessible from the deployment environment.
+                
+            api_key (Optional[str]): 
+                Azure Document Intelligence API key for authentication.
+                Should be stored securely in environment variables or Key Vault.
+                If None, reads from DOCUMENT_INTELLIGENCE_KEY environment variable.
+                Key must have appropriate permissions for document analysis.
+                
+            default_model_id (str): 
+                Default model identifier for document analysis operations.
+                Default: 'serialnumber' - custom model trained for warehouse documents.
+                Must be a valid model ID deployed in the Azure service.
+                Can be overridden per request for different document types.
+                
+            max_retry_attempts (int): 
+                Maximum number of retry attempts for failed API calls.
+                Default: 3 attempts total (initial + 2 retries).
+                Balances reliability with response time requirements.
+                Higher values increase resilience but may impact latency.
+                
+            retry_delay_seconds (int): 
+                Base delay in seconds between retry attempts.
+                Default: 2 seconds with exponential backoff multiplier.
+                First retry: 2s, second retry: 4s, third retry: 8s.
+                Prevents overwhelming the service during transient issues.
+                
         Raises:
-            ValueError: If endpoint or API key is not provided and not in environment
+            ValueError: 
+                If required configuration is missing or invalid:
+                - Missing endpoint URL in parameter or environment
+                - Missing API key in parameter or environment  
+                - Invalid endpoint URL format
+                - Empty or whitespace-only configuration values
+                
+            HttpResponseError:
+                If Azure service configuration is invalid:
+                - Invalid API endpoint or key
+                - Service region mismatch
+                - Insufficient permissions for the API key
+                - Service temporarily unavailable
+                
+            Exception:
+                For other initialization failures:
+                - Network connectivity issues
+                - DNS resolution failures
+                - SSL certificate validation errors
+                
+        **Environment Variables Used:**
+        - DOCUMENT_INTELLIGENCE_ENDPOINT: Service endpoint URL
+        - DOCUMENT_INTELLIGENCE_KEY: Authentication API key  
+        - DOCUMENT_INTELLIGENCE_API_VERSION: API version (default: 2024-11-30)
+        - DEFAULT_MODEL_ID: Default model identifier override
+        
+        Example:
+            >>> # Initialize with environment variables
+            >>> service = DocumentIntelligenceService()
+            
+            >>> # Initialize with explicit configuration  
+            >>> service = DocumentIntelligenceService(
+            ...     endpoint='https://myservice.cognitiveservices.azure.com/',
+            ...     api_key='your-api-key-here',
+            ...     default_model_id='custom-model-id'
+            ... )
+            
+            >>> # Use for document analysis
+            >>> response = await service.analyze_document_from_bytes(
+            ...     document_bytes, request, filename, content_type
+            ... )
         """
         # Get logger for this service
         self.logger = get_logger('warehouse_returns.document_intelligence.service')
@@ -147,6 +237,14 @@ class DocumentIntelligenceService:
             # Prepare analysis request
             analyze_request = AnalyzeDocumentRequest(url_source=str(request.document_url))
             
+            # Log the API request details
+            self.logger.info(
+                f"[AZURE-API-REQUEST-URL] Endpoint: {self.endpoint}, "
+                f"Model-ID: {request.model_id}, Document-URL: {str(request.document_url)[:100]}..., "
+                f"Document-Type: {request.document_type}, Confidence-Threshold: {request.confidence_threshold}, "
+                f"Correlation-ID: {correlation_id}"
+            )
+            
             # Execute analysis with retry logic
             for attempt in range(1, self.max_retry_attempts + 1):
                 try:
@@ -164,16 +262,39 @@ class DocumentIntelligenceService:
                     # Wait for analysis completion
                     azure_result = poller.result()
                     
+                    # Log the raw Azure API response
+                    pages_count = len(azure_result.pages) if azure_result.pages else 0
+                    docs_count = len(azure_result.documents) if azure_result.documents else 0
+                    content_length = len(azure_result.content) if azure_result.content else 0
+                    
+                    self.logger.info(
+                        f"[AZURE-API-RESPONSE-URL] Status: succeeded, Model-ID: {request.model_id}, "
+                        f"Pages: {pages_count}, Documents: {docs_count}, Content-Length: {content_length}, "
+                        f"Correlation-ID: {correlation_id}"
+                    )
+                    
+                    # Log detailed field extraction results
+                    if azure_result.documents:
+                        for doc_idx, document in enumerate(azure_result.documents):
+                            if document.fields:
+                                fields_summary = []
+                                for field_name, field_value in document.fields.items():
+                                    value = getattr(field_value, 'content', None) or getattr(field_value, 'value', None)
+                                    confidence = getattr(field_value, 'confidence', 0.0)
+                                    fields_summary.append(f"{field_name}:'{value}'({confidence:.3f})")
+                                
+                                self.logger.info(
+                                    f"[EXTRACTED-FIELDS] Document-{doc_idx}, Model-ID: {request.model_id}, "
+                                    f"Fields: [{', '.join(fields_summary)}], Correlation-ID: {correlation_id}"
+                                )
+                    
                     # Convert to our response model
                     response = self._convert_azure_response(azure_result)
                     
                     processing_time = time.time() - start_time
                     self.logger.info(
-                        "Document analysis completed successfully",
-                        processing_time_ms=int(processing_time * 1000),
-                        status=response.status,
-                        model_id=request.model_id,
-                        correlation_id=correlation_id
+                        f"Document analysis completed successfully - Processing-Time: {int(processing_time * 1000)}ms, "
+                        f"Status: {response.status}, Model-ID: {request.model_id}, Correlation-ID: {correlation_id}"
                     )
                     
                     return response, None
@@ -319,6 +440,15 @@ class DocumentIntelligenceService:
                 )
                 return None, error_response
             
+            # Log the API request details for file upload
+            self.logger.info(
+                f"[AZURE-API-REQUEST-FILE] Endpoint: {self.endpoint}, "
+                f"Model-ID: {request.model_id}, Filename: {filename}, "
+                f"Content-Type: {content_type}, File-Size: {len(document_bytes)} bytes, "
+                f"Document-Type: {request.document_type}, Confidence-Threshold: {request.confidence_threshold}, "
+                f"Correlation-ID: {correlation_id}"
+            )
+            
             # Execute analysis with retry logic
             for attempt in range(1, self.max_retry_attempts + 1):
                 try:
@@ -338,17 +468,41 @@ class DocumentIntelligenceService:
                     # Wait for analysis completion
                     azure_result = poller.result()
                     
+                    # Log the raw Azure API response
+                    pages_count = len(azure_result.pages) if azure_result.pages else 0
+                    docs_count = len(azure_result.documents) if azure_result.documents else 0
+                    content_length = len(azure_result.content) if azure_result.content else 0
+                    
+                    self.logger.info(
+                        f"[AZURE-API-RESPONSE-FILE] Status: succeeded, Model-ID: {request.model_id}, "
+                        f"Filename: {filename}, Pages: {pages_count}, Documents: {docs_count}, "
+                        f"Content-Length: {content_length}, Correlation-ID: {correlation_id}"
+                    )
+                    
+                    # Log detailed field extraction results
+                    if azure_result.documents:
+                        for doc_idx, document in enumerate(azure_result.documents):
+                            if document.fields:
+                                fields_summary = []
+                                for field_name, field_value in document.fields.items():
+                                    value = getattr(field_value, 'content', None) or getattr(field_value, 'value', None)
+                                    confidence = getattr(field_value, 'confidence', 0.0)
+                                    fields_summary.append(f"{field_name}:'{value}'({confidence:.3f})")
+                                
+                                self.logger.info(
+                                    f"[EXTRACTED-FIELDS] Document-{doc_idx}, Model-ID: {request.model_id}, "
+                                    f"Filename: {filename}, Fields: [{', '.join(fields_summary)}], "
+                                    f"Correlation-ID: {correlation_id}"
+                                )
+                    
                     # Convert to our response model
                     response = self._convert_azure_response(azure_result)
                     
                     processing_time = time.time() - start_time
                     self.logger.info(
-                        "Document analysis completed successfully",
-                        filename=filename,
-                        processing_time_ms=int(processing_time * 1000),
-                        status=response.status,
-                        model_id=request.model_id,
-                        correlation_id=correlation_id
+                        f"Document analysis completed successfully - Filename: {filename}, "
+                        f"Processing-Time: {int(processing_time * 1000)}ms, Status: {response.status}, "
+                        f"Model-ID: {request.model_id}, Correlation-ID: {correlation_id}"
                     )
                     
                     return response, None

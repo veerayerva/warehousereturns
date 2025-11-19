@@ -21,12 +21,32 @@ License: Internal Use
 import os
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# Load environment variables from .env.local if it exists
+try:
+    from dotenv import load_dotenv
+    load_dotenv('.env.local')
+except ImportError:
+    pass  # dotenv not installed, rely on local.settings.json
+
 import json
 import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 import asyncio
+
+# Debug support for VS Code
+try:
+    import debugpy
+    # Only start debugger if not already running
+    if not debugpy.is_client_connected():
+        debugpy.listen(5678)
+        print("🐛 Debug server started on port 5678. VS Code can now attach!")
+except ImportError:
+    print("debugpy not available - install with: pip install debugpy")
+except Exception as e:
+    print(f"Debug setup error: {e}")
 
 # Azure Functions imports
 import azure.functions as func
@@ -54,6 +74,7 @@ from models import (
     ErrorResponse,
     ErrorCode
 )
+from models.DocumentAnalysisRequestModel import DocumentType
 
 # Create the Function App
 app = func.FunctionApp()
@@ -72,8 +93,16 @@ def get_processing_service() -> DocumentProcessingService:
     global _processing_service
     
     if _processing_service is None:
-        logger.info("Initializing Document Processing Service")
-        _processing_service = DocumentProcessingService()
+        logger.info("[SERVICE-INIT] Initializing Document Processing Service")
+        try:
+            _processing_service = DocumentProcessingService()
+            logger.info(f"[SERVICE-INIT] Document Processing Service initialized - "
+                       f"Blob-Enabled: {_processing_service.enable_blob_storage}, "
+                       f"Blob-Repo-Available: {_processing_service.blob_repository is not None}")
+        except Exception as e:
+            logger.error(f"[SERVICE-INIT] Failed to initialize Document Processing Service - "
+                        f"Error: {type(e).__name__}: {str(e)}")
+            raise
     
     return _processing_service
 
@@ -97,10 +126,10 @@ def _get_security_headers() -> Dict[str, str]:
 def _create_error_response(message: str, status_code: int, correlation_id: str = None) -> func.HttpResponse:
     """Create a standardized error response."""
     error_response = ErrorResponse(
-        error="processing_error",
+        error_code=ErrorCode.PROCESSING_ERROR,
         message=message,
         correlation_id=correlation_id,
-        timestamp=datetime.now(timezone.utc).isoformat()
+        timestamp=datetime.now(timezone.utc)
     )
     
     return func.HttpResponse(
@@ -127,6 +156,15 @@ def process_document(req: func.HttpRequest) -> func.HttpResponse:
     # Generate correlation ID for request tracing
     correlation_id = _generate_correlation_id()
     
+    # Log incoming HTTP request details
+    logger.info(
+        f"[HTTP-REQUEST] Endpoint: /api/process-document, Method: {req.method}, "
+        f"Content-Type: {req.headers.get('content-type', 'not-specified')}, "
+        f"Content-Length: {req.headers.get('content-length', 'not-specified')}, "
+        f"User-Agent: {req.headers.get('user-agent', 'not-specified')[:100]}..., "
+        f"Correlation-ID: {correlation_id}"
+    )
+    
     logger.info(f"ProcessDocument endpoint called - Correlation ID: {correlation_id}")
     
     try:
@@ -145,16 +183,33 @@ def process_document(req: func.HttpRequest) -> func.HttpResponse:
             )
         if isinstance(result, func.HttpResponse):
             return result
+        
+        # Convert DocumentAnalysisResponse to JSON response
         response_data = {
-            "operation_id": result.operation_id,
+            "analysis_id": result.analysis_id,
             "status": result.status,
             "serial_field": result.serial_field.dict() if result.serial_field else None,
-            "confidence_evaluation": result.confidence_evaluation.dict() if result.confidence_evaluation else None,
-            "blob_storage_info": result.blob_storage_info.dict() if result.blob_storage_info else None,
-            "processing_duration_ms": result.processing_duration_ms,
-            "correlation_id": correlation_id,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "document_metadata": result.document_metadata,
+            "processing_metadata": result.processing_metadata,
+            "blob_storage_info": result.blob_storage_info,
+            "created_at": result.created_at.isoformat() if result.created_at else None,
+            "completed_at": result.completed_at.isoformat() if result.completed_at else None,
+            "correlation_id": result.correlation_id,
+            "error_details": result.error_details
         }
+        
+        # Log successful HTTP response details
+        serial_value = result.serial_field.value if result.serial_field else None
+        serial_confidence = result.serial_field.confidence if result.serial_field else 0.0
+        serial_status = result.serial_field.status if result.serial_field else "none"
+        
+        logger.info(
+            f"[HTTP-RESPONSE-SUCCESS] Status: 200, Analysis-ID: {result.analysis_id}, "
+            f"Serial-Value: {serial_value}, Serial-Confidence: {serial_confidence:.3f}, "
+            f"Serial-Status: {serial_status}, Response-Size: {len(json.dumps(response_data))} chars, "
+            f"Correlation-ID: {correlation_id}"
+        )
+        
         logger.info(f"Document processing completed successfully - Correlation ID: {correlation_id}")
         return func.HttpResponse(
             json.dumps(response_data, indent=2),
@@ -162,7 +217,14 @@ def process_document(req: func.HttpRequest) -> func.HttpResponse:
             mimetype=JSON_MIMETYPE,
             headers=_get_security_headers()
         )
-    except Exception:
+    except Exception as e:
+        # Log error HTTP response details
+        logger.error(
+            f"[HTTP-RESPONSE-ERROR] Status: 500, Error-Type: {type(e).__name__}, "
+            f"Error-Message: {str(e)[:200]}..., Correlation-ID: {correlation_id}",
+            exc_info=True
+        )
+        
         logger.error(f"Unexpected error in ProcessDocument - Correlation ID: {correlation_id}", exc_info=True)
         return _create_error_response("An unexpected error occurred while processing the document", 500, correlation_id)
 
@@ -171,6 +233,13 @@ def _handle_json_request(req, processing_service, correlation_id):
         req_body = req.get_json()
         if not req_body:
             return _create_error_response("Request body is required", 400, correlation_id)
+        
+        # Log the parsed JSON request data
+        logger.info(
+            f"[JSON-REQUEST] Type: url_analysis, Body: {json.dumps(req_body)[:300]}..., "
+            f"Correlation-ID: {correlation_id}"
+        )
+        
         url_request = DocumentAnalysisUrlRequest(**req_body)
         logger.info(f"Processing document from URL - Correlation ID: {correlation_id}")
         loop = asyncio.new_event_loop()
@@ -197,8 +266,37 @@ def _handle_file_upload(req, processing_service, correlation_id):
         uploaded_file = files['file']
         if not uploaded_file.filename:
             return _create_error_response("File name is required", 400, correlation_id)
+        
+        # Get file size before processing
+        file_size = 0
+        if uploaded_file.stream:
+            current_pos = uploaded_file.stream.tell()
+            uploaded_file.stream.seek(0, 2)  # Seek to end
+            file_size = uploaded_file.stream.tell()
+            uploaded_file.stream.seek(current_pos)  # Return to original position
+        
+        # Log the file upload request data
+        logger.info(
+            f"[FILE-UPLOAD] Type: file_analysis, Filename: {uploaded_file.filename}, "
+            f"Content-Type: {uploaded_file.content_type or 'unknown'}, "
+            f"File-Size: {file_size} bytes, Correlation-ID: {correlation_id}"
+        )
+        
+        # Reset file stream position after reading for size
+        uploaded_file.stream.seek(0)
+        
         logger.info(f"Processing uploaded file: {uploaded_file.filename} - Correlation ID: {correlation_id}")
         file_content = uploaded_file.read()
+        
+        # Create DocumentAnalysisFileRequest from form data or use defaults
+        content_type = uploaded_file.content_type or 'application/octet-stream'
+        file_request = DocumentAnalysisFileRequest(
+            document_type=DocumentType.SERIAL_NUMBER,
+            model_id="serialnumber",
+            confidence_threshold=float(os.getenv('CONFIDENCE_THRESHOLD', '0.7')),
+            correlation_id=correlation_id
+        )
+        
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
@@ -206,6 +304,8 @@ def _handle_file_upload(req, processing_service, correlation_id):
                 processing_service.process_document_from_bytes(
                     file_content,
                     uploaded_file.filename,
+                    content_type,
+                    file_request,
                     correlation_id
                 )
             )

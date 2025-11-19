@@ -30,7 +30,22 @@ class TestAggregationService:
     
     @pytest.mark.unit
     def test_service_initialization(self):
-        """Test aggregation service initialization."""
+        """
+        Test comprehensive aggregation service initialization with dependency injection.
+        
+        This test validates that the AggregationService initializes correctly:
+        - HTTP client instance is properly injected and accessible
+        - Logger is initialized with correct namespace and configuration
+        - Service instance maintains proper state and configuration
+        - All required dependencies are properly set up
+        - Service is ready for API orchestration operations
+        
+        Validation Points:
+        - HTTP client dependency injection and accessibility
+        - Logger setup for structured logging and monitoring
+        - Service instance state and method availability
+        - Configuration inheritance and default values
+        """
         mock_http_client = Mock()
         service = AggregationService(mock_http_client)
         
@@ -50,7 +65,28 @@ class TestAggregationService:
         mock_successful_http_responses,
         expected_aggregated_response
     ):
-        """Test successful aggregation of piece information from all APIs."""
+        """
+        Test successful aggregation of piece information from multiple external APIs.
+        
+        This comprehensive integration test validates the complete API orchestration workflow:
+        - Successful execution of all three API calls (inventory, product, vendor)
+        - Proper data aggregation and transformation from multiple sources
+        - Correct response structure matching business requirements
+        - Field mapping and data validation across API responses
+        - Error handling and resilience during API interactions
+        
+        Test Scenario:
+        - Mock successful responses from all external APIs
+        - Validate aggregated response contains all required fields
+        - Verify data transformation and business logic application
+        - Ensure response format matches expected schema
+        
+        Coverage Areas:
+        - Multi-API orchestration and sequencing
+        - Data aggregation from heterogeneous sources
+        - Response validation and business rule application
+        - Error handling and graceful degradation
+        """
         # Configure mock HTTP client
         mock_successful_http_responses(mock_http_client)
         

@@ -238,13 +238,106 @@ class WarehouseReturnsLogger:
 # Global logger instances for each component
 def get_logger(name: str = None) -> WarehouseReturnsLogger:
     """
-    Get logger instance for a component.
+    Get or create a configured logger instance for warehouse returns components.
+    
+    This factory function creates logger instances with consistent configuration:
+    - Structured JSON formatting for machine-readable logs
+    - Azure Application Insights integration for centralized monitoring
+    - Business event tracking capabilities for operational analytics
+    - Correlation ID support for distributed request tracing
+    - Environment-specific configuration (development vs production)
+    
+    The logger uses a hierarchical naming convention that enables fine-grained
+    log level control and filtering in monitoring systems:
+    - warehouse_returns.{service}.{component}.{subcomponent}
+    
+    **Configuration Sources:**
+    - LOG_LEVEL: Controls verbosity (DEBUG, INFO, WARNING, ERROR)
+    - ENABLE_STRUCTURED_LOGGING: Enables JSON formatting (default: true)
+    - APPINSIGHTS_INSTRUMENTATIONKEY: Azure monitoring integration
+    - WAREHOUSE_RETURNS_ENV: Environment context for log enrichment
     
     Args:
-        name: Logger name, defaults to calling module
-    
+        name (str, optional): 
+            Hierarchical logger name for component identification.
+            If None, derives name from calling module's __name__.
+            
+            **Recommended naming convention:**
+            - Service level: 'warehouse_returns.document_intelligence'
+            - Component level: 'warehouse_returns.document_intelligence.processing'
+            - Method level: 'warehouse_returns.document_intelligence.processing.analyze'
+            
+            **Examples:**
+            - 'warehouse_returns.document_intelligence'
+            - 'warehouse_returns.pieceinfo_api.aggregation'
+            - 'warehouse_returns.shared.middleware.logging'
+            
     Returns:
-        Configured logger instance
+        WarehouseReturnsLogger: 
+            Configured logger instance with the following capabilities:
+            - Standard logging methods (debug, info, warning, error, critical)
+            - Business event logging (log_business_event)
+            - Function lifecycle logging (log_function_entry/exit)
+            - API call logging (log_api_request/response)
+            - Structured property support for rich context
+            - Automatic correlation ID propagation
+            - Exception context capture with stack traces
+            
+    **Logger Features:**
+    - **Structured Logging**: All logs formatted as JSON with consistent schema
+    - **Business Events**: Special event logging for operational analytics
+    - **Performance Tracking**: Function duration and API response time logging
+    - **Error Context**: Rich exception information with correlation IDs
+    - **Distributed Tracing**: Request correlation across service boundaries
+    
+    **Usage Patterns:**
+    
+    **Basic Logging:**
+    ```python
+    logger = get_logger('warehouse_returns.mycomponent')
+    logger.info('Processing started', document_id='doc123', correlation_id='req456')
+    ```
+    
+    **Business Event Tracking:**
+    ```python
+    logger.log_business_event(
+        event_name='document_processed',
+        entity_type='document',
+        entity_id='doc123',
+        properties={'confidence': 0.85, 'model': 'serialnumber'}
+    )
+    ```
+    
+    **Function Lifecycle:**
+    ```python
+    logger.log_function_entry('analyze_document', {'file_size': 1024})
+    # ... function logic ...
+    logger.log_function_exit('analyze_document', result, duration_ms=150)
+    ```
+    
+    **API Call Tracing:**
+    ```python
+    logger.log_api_request('POST', 'https://api.azure.com/analyze', correlation_id='req456')
+    # ... make API call ...
+    logger.log_api_response('POST', 'https://api.azure.com/analyze', 200, 250, 'req456')
+    ```
+    
+    Example:
+        >>> # Service-level logger for document intelligence
+        >>> doc_logger = get_logger('warehouse_returns.document_intelligence')
+        >>> doc_logger.info('Service initialized', version='1.0.0')
+        
+        >>> # Component-specific logger  
+        >>> proc_logger = get_logger('warehouse_returns.document_intelligence.processing')
+        >>> proc_logger.info('Processing document', analysis_id='doc123')
+        
+        >>> # Business event logging
+        >>> proc_logger.log_business_event(
+        ...     event_name='document_analysis_completed',
+        ...     entity_type='document',
+        ...     entity_id='doc123',
+        ...     properties={'confidence': 0.92, 'processing_time_ms': 1500}
+        ... )
     """
     return WarehouseReturnsLogger(name)
 

@@ -58,10 +58,68 @@ class SimpleHTTPClient:
     
     def __init__(self):
         """
-        Initialize the HTTP client with production-ready configuration.
+        Initialize the HTTP client with production-ready configuration for secure external API communication.
         
-        Loads configuration from environment variables with sensible defaults
-        and sets up SSL context, connection pooling, and monitoring capabilities.
+        This constructor sets up a comprehensive HTTP client infrastructure designed for enterprise
+        external API integration with security, reliability, and performance monitoring:
+        
+        **Security Configuration:**
+        - SSL/TLS certificate validation with custom CA bundle support
+        - Secure credential management from environment variables
+        - Request/response sanitization for logging and monitoring
+        - Protection against common web vulnerabilities (redirects, timeouts)
+        
+        **Reliability Features:**  
+        - Configurable retry logic with exponential backoff
+        - Connection pooling for performance optimization
+        - Timeout protection at multiple levels (connect, read, total)
+        - Circuit breaker pattern for failing external services
+        
+        **Monitoring & Observability:**
+        - Request/response performance metrics collection
+        - Detailed error classification and reporting
+        - Correlation ID propagation for distributed tracing  
+        - Comprehensive logging for troubleshooting and audit
+        
+        **Configuration Sources:**
+        Loads settings from environment variables with production defaults:
+        - HTTP_CLIENT_TIMEOUT: Request timeout in seconds (default: 30)
+        - HTTP_CLIENT_MAX_RETRIES: Maximum retry attempts (default: 3)
+        - SSL_VERIFY: Enable SSL certificate validation (default: true)
+        - SSL_CA_BUNDLE: Custom CA certificate bundle path (optional)
+        - HTTP_CLIENT_POOL_SIZE: Connection pool size (default: 10)
+        - SUBSCRIPTION_KEY: Authentication key for external APIs
+        
+        **Connection Configuration:**
+        - Connection pooling: Reuses connections for performance
+        - Keep-alive: Maintains persistent connections where supported
+        - Timeout layers: Connect (5s), read (25s), total (30s) timeouts
+        - SSL/TLS: Enforces modern TLS versions (1.2+) with certificate validation
+        
+        **Error Handling Strategy:**
+        - Network errors: Automatic retry with exponential backoff
+        - HTTP 4xx errors: No retry (client errors are not transient)
+        - HTTP 5xx errors: Retry with backoff (server errors may be transient)
+        - Timeout errors: Retry with increased timeout on subsequent attempts
+        
+        Raises:
+            Exception: If critical configuration is missing or invalid:
+                - Invalid SSL certificate configuration
+                - Network interface binding failures  
+                - Environment configuration validation errors
+                
+        Example:
+            >>> # Initialize with environment configuration
+            >>> client = SimpleHTTPClient()
+            
+            >>> # Make authenticated GET request
+            >>> headers = {'Subscription-Key': 'your-api-key'}
+            >>> response = await client.get('https://api.external.com/data', headers=headers)
+            
+            >>> # Handle response
+            >>> if response.status_code == 200:
+            ...     data = response.json()
+            ...     print(f"Retrieved {len(data)} items")
         """
         # ===================================================================
         # ENVIRONMENT-BASED CONFIGURATION

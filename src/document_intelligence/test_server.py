@@ -24,6 +24,18 @@ logger = logging.getLogger(__name__)
 class MockHttpRequest:
     """Mock HttpRequest to simulate Azure Functions HttpRequest"""
     def __init__(self, flask_request):
+        """
+        Initialize mock HTTP request adapter for Azure Functions compatibility.
+        
+        This adapter allows Flask requests to be used with Azure Functions code:
+        - Converts Flask request objects to Azure Functions HttpRequest interface
+        - Provides transparent access to request data and metadata
+        - Enables local testing without Azure Functions runtime
+        - Maintains compatibility with production Azure Functions code
+        
+        Args:
+            flask_request: Flask request object to wrap
+        """
         self._flask_request = flask_request
         self._body = None
         
@@ -55,7 +67,22 @@ class MockHttpRequest:
         return dict(self._flask_request.args)
 
 def convert_response(func_response):
-    """Convert Azure Functions HttpResponse to Flask response"""
+    """
+    Convert Azure Functions HttpResponse to Flask-compatible response format.
+    
+    This adapter function bridges Azure Functions and Flask response formats:
+    - Extracts status code, headers, and body from Azure Functions response
+    - Converts to Flask response format for web server compatibility
+    - Handles JSON and text responses appropriately
+    - Maintains response headers and status codes accurately
+    - Enables seamless local testing with Flask development server
+    
+    Args:
+        func_response: Azure Functions HttpResponse object
+        
+    Returns:
+        Flask response tuple (body, status_code, headers)
+    """
     if hasattr(func_response, 'get_body'):
         body = func_response.get_body()
         if isinstance(body, bytes):
@@ -67,13 +94,25 @@ def convert_response(func_response):
         # Try to parse as JSON
         json_body = json.loads(body)
         return jsonify(json_body), getattr(func_response, 'status_code', 200)
-    except:
-        # Return as plain text
+    except (json.JSONDecodeError, ValueError):
+        # Return as plain text if JSON parsing fails
         return body, getattr(func_response, 'status_code', 200)
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    """Health check endpoint"""
+    """
+    Health check endpoint for development server monitoring.
+    
+    This endpoint provides comprehensive health status for local development:
+    - Validates Azure Functions code compatibility
+    - Checks service dependencies and configuration
+    - Returns detailed health status for monitoring
+    - Enables development environment validation
+    - Supports automated health checks during testing
+    
+    Returns:
+        JSON response with health status and system information
+    """
     try:
         mock_req = MockHttpRequest(request)
         response = document_health_check(mock_req)

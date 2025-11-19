@@ -1,0 +1,42 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Attach to Azure Functions (Port 5678)",
+            "type": "debugpy",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": 5678
+            },
+            "pathMappings": [
+                {
+                    "localRoot": "${workspaceFolder}/src/document_intelligence",
+                    "remoteRoot": "."
+                }
+            ]
+        },
+        {
+            "name": "Debug Azure Function (Current File)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/src/document_intelligence",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src/document_intelligence"
+            }
+        },
+        {
+            "name": "Debug Document Intelligence Service",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/document_intelligence/services/document_intelligence_service.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}/src/document_intelligence",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src/document_intelligence"
+            }
+        }
+    ]
+}

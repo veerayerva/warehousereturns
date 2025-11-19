@@ -160,10 +160,28 @@ class ErrorResponse(BaseModel):
 
     def is_retryable(self) -> bool:
         """
-        Determine if the error condition is retryable.
+        Determine if the error condition is retryable with intelligent retry logic.
+        
+        This method analyzes error codes to determine retry appropriateness:
+        - Identifies transient errors that may resolve on retry
+        - Distinguishes between client errors (non-retryable) and service errors
+        - Considers rate limiting and temporary service unavailability
+        - Provides guidance for exponential backoff retry strategies
+        
+        Retryable Error Categories:
+        - Azure API temporary failures (503, 429, connection timeouts)
+        - Document analysis timeouts due to processing load
+        - Service unavailability during maintenance windows
+        - Temporary processing errors that may resolve
+        
+        Non-Retryable Errors:
+        - Client validation errors (400 Bad Request)
+        - Authentication/authorization failures (401/403)
+        - Invalid file formats or sizes (422 Unprocessable Entity)
+        - Permanent resource not found errors (404)
         
         Returns:
-            bool: True if the operation should be retried after a delay
+            bool: True if the operation should be retried after appropriate delay
         """
         retryable_codes = {
             ErrorCode.AZURE_API_ERROR,
@@ -175,10 +193,28 @@ class ErrorResponse(BaseModel):
 
     def is_client_error(self) -> bool:
         """
-        Determine if the error is caused by client request issues.
+        Determine if the error is due to client-side issues with comprehensive categorization.
+        
+        This method classifies errors to help determine appropriate response handling:
+        - Identifies request validation errors requiring client correction
+        - Distinguishes between client mistakes and service failures
+        - Enables appropriate HTTP status code selection
+        - Guides error response formatting and client notification
+        
+        Client Error Categories:
+        - Request validation failures (invalid parameters, missing fields)
+        - File format/size violations (unsupported types, too large)
+        - URL validation errors (malformed, inaccessible URLs)
+        - Authentication/authorization issues (invalid tokens, permissions)
+        
+        Server Error Categories:
+        - Azure service failures and timeouts
+        - Processing errors and system failures
+        - Rate limiting and capacity issues
+        - Configuration and deployment errors
         
         Returns:
-            bool: True if error is due to invalid client request
+            bool: True if error is caused by invalid client request requiring correction
         """
         client_error_codes = {
             ErrorCode.INVALID_REQUEST,

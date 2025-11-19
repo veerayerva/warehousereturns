@@ -7,11 +7,10 @@ reprocessing, and model training. Provides organized storage with metadata track
 
 import os
 import json
-import asyncio
+import time
 from typing import Optional, Dict, Any, Tuple, BinaryIO
 from datetime import datetime, timedelta
-from azure.storage.blob.aio import BlobServiceClient, ContainerClient
-from azure.storage.blob import BlobProperties
+from azure.storage.blob import BlobServiceClient, ContainerClient, BlobProperties
 from azure.core.exceptions import AzureError, ResourceNotFoundError
 
 # Simple logging setup
@@ -88,10 +87,27 @@ class BlobStorageRepository:
         self.connection_string = connection_string or os.getenv('AZURE_STORAGE_CONNECTION_STRING')
         self.container_name = container_name
         
+        # Debug environment variables
+        all_env_vars = list(os.environ.keys())
+        azure_env_vars = [key for key in all_env_vars if 'AZURE' in key or 'STORAGE' in key or 'BLOB' in key]
+        
+        self.logger.info(
+            f"[BLOB-REPO-CONFIG] Configuration loaded - "
+            f"Container: {self.container_name}, "
+            f"Connection-String-Length: {len(self.connection_string) if self.connection_string else 0}, "
+            f"Connection-String-From: {'parameter' if connection_string else 'environment'}, "
+            f"Total-Env-Vars: {len(all_env_vars)}, "
+            f"Azure-Related-Env-Vars: {azure_env_vars[:10]}..."  # Show first 10
+        )
+        
         # Validate required configuration
         if not self.connection_string:
             error_msg = "Azure Storage connection string is required. Set AZURE_STORAGE_CONNECTION_STRING environment variable."
-            self.logger.error("Missing Azure Storage connection string configuration")
+            self.logger.error(
+                f"[BLOB-REPO-CONFIG] Missing Azure Storage connection string - "
+                f"Env-Var-Set: {bool(os.getenv('AZURE_STORAGE_CONNECTION_STRING'))}, "
+                f"Available-Azure-Vars: {azure_env_vars}"
+            )
             raise ValueError(error_msg)
         
         # Initialize Azure Blob Storage client
@@ -100,14 +116,18 @@ class BlobStorageRepository:
                 self.connection_string
             )
             self.logger.info(
-                "Blob Storage repository initialized successfully",
-                container_name=self.container_name
+                f"[BLOB-REPO-INIT] Blob Storage repository initialized successfully - "
+                f"Container: {self.container_name}, "
+                f"Storage-Account: {self._get_storage_account_name()}, "
+                f"Connection-String-Length: {len(self.connection_string) if self.connection_string else 0}"
             )
         except Exception as e:
             self.logger.error(
-                "Failed to initialize Blob Storage client",
-                container_name=self.container_name,
-                exception=e
+                f"[BLOB-REPO-INIT] Failed to initialize Blob Storage client - "
+                f"Container: {self.container_name}, "
+                f"Exception: {str(e)}, "
+                f"Exception-Type: {type(e).__name__}, "
+                f"Connection-String-Set: {bool(self.connection_string)}"
             )
             raise
         
@@ -115,7 +135,7 @@ class BlobStorageRepository:
         self.max_retry_attempts = max_retry_attempts
         self.retry_delay_seconds = retry_delay_seconds
 
-    async def store_low_confidence_document(
+    def store_low_confidence_document(
         self,
         analysis_id: str,
         document_data: bytes,
@@ -127,30 +147,98 @@ class BlobStorageRepository:
         """
         Store a low-confidence document for manual review and retraining.
         
+        This method implements the core document storage workflow for continuous improvement:
+        1. Creates organized storage structure with date-based hierarchy
+        2. Uploads original document with proper content type and metadata
+        3. Stores comprehensive analysis metadata as JSON for review workflows
+        4. Implements retry logic with exponential backoff for resilience
+        5. Returns storage URLs and paths for tracking and retrieval
+        
+        The storage structure enables efficient organization and retrieval:
+        - Documents are stored by date for temporal organization
+        - Each analysis gets a unique folder with document + metadata
+        - Metadata includes original analysis results for comparison after review
+        - Storage paths support migration through review workflow stages
+        
         Args:
-            analysis_id (str): Unique analysis identifier
-            document_data (bytes): Document file content
-            filename (str): Original document filename
-            content_type (str): MIME type of the document
-            analysis_metadata (Dict[str, Any]): Analysis results and metadata
-            correlation_id (Optional[str]): Correlation ID for tracing
-            
+            analysis_id (str): 
+                Unique identifier for this document analysis session.
+                Used as the primary key for storage organization and retrieval.
+                Format: Typically UUID-based for global uniqueness.
+                
+            document_data (bytes): 
+                Raw binary content of the original document.
+                Stored as-is to preserve original document for manual review.
+                Size should be validated before calling this method.
+                
+            filename (str): 
+                Original filename from the document upload.
+                Used for file extension detection and metadata tracking.
+                Preserved for human-readable storage organization.
+                
+            content_type (str): 
+                MIME type of the document (e.g., 'application/pdf').
+                Used for proper blob storage content-type headers.
+                Enables browsers to handle downloads correctly.
+                
+            analysis_metadata (Dict[str, Any]): 
+                Complete analysis results and processing metadata including:
+                - Extracted field values and confidence scores
+                - Model information and API version used
+                - Processing timestamps and performance metrics
+                - Business context and correlation information
+                
+            correlation_id (Optional[str]): 
+                Request correlation identifier for distributed tracing.
+                Links storage operations to original processing request.
+                Used for debugging and audit trail purposes.
+                
         Returns:
             Tuple[Optional[Dict[str, str]], Optional[ErrorResponse]]:
-                Storage information dict and error (if any)
+                Success case: (storage_info_dict, None)
+                - storage_info contains URLs, paths, timestamps for tracking
+                - Includes both document and metadata storage locations
+                
+                Failure case: (None, error_response)
+                - error_response contains categorized error with retry guidance
+                - Includes correlation_id for troubleshooting support
+                
+        Storage Structure Created:
+            container/low-confidence/pending-review/YYYY/MM/DD/analysis_id/
+            ├── document.{ext}    # Original document file
+            └── metadata.json     # Analysis results and processing metadata
+                
+        Example:
+            >>> storage_info, error = await repo.store_low_confidence_document(
+            ...     analysis_id="analysis-12345",
+            ...     document_data=pdf_bytes,
+            ...     filename="return_doc.pdf", 
+            ...     content_type="application/pdf",
+            ...     analysis_metadata={"serial_field": {"value": "SN123", "confidence": 0.65}},
+            ...     correlation_id="req-abc123"
+            ... )
+            >>> if storage_info:
+            ...     print(f"Stored at: {storage_info['storage_url']}")
         """
         self.logger.info(
-            "Storing low-confidence document for review",
-            analysis_id=analysis_id,
-            filename=filename,
-            content_type=content_type,
-            file_size_bytes=len(document_data),
-            correlation_id=correlation_id
+            f"[BLOB-REPO-STORE] Starting low-confidence document storage - "
+            f"Analysis-ID: {analysis_id}, "
+            f"Filename: {filename}, "
+            f"Content-Type: {content_type}, "
+            f"File-Size: {len(document_data)} bytes, "
+            f"Container: {self.container_name}, "
+            f"Max-Retry-Attempts: {self.max_retry_attempts}, "
+            f"Correlation-ID: {correlation_id}"
         )
         
         try:
             # Ensure container exists
-            await self._ensure_container_exists()
+            self.logger.info(
+                f"[BLOB-REPO-STORE] Ensuring container exists - "
+                f"Container: {self.container_name}, "
+                f"Analysis-ID: {analysis_id}"
+            )
+            self._ensure_container_exists()
             
             # Generate storage paths
             date_prefix = datetime.utcnow().strftime("%Y/%m/%d")
@@ -171,6 +259,14 @@ class BlobStorageRepository:
             document_blob_path = f"{base_path}/document{file_extension}"
             metadata_blob_path = f"{base_path}/metadata.json"
             
+            self.logger.info(
+                f"[BLOB-REPO-STORE] Generated storage paths - "
+                f"Analysis-ID: {analysis_id}, "
+                f"Document-Path: {document_blob_path}, "
+                f"Metadata-Path: {metadata_blob_path}, "
+                f"File-Extension: {file_extension}"
+            )
+            
             # Prepare metadata
             storage_metadata = {
                 "analysis_id": analysis_id,
@@ -189,14 +285,27 @@ class BlobStorageRepository:
             
             # Store with retry logic
             for attempt in range(1, self.max_retry_attempts + 1):
+                self.logger.info(
+                    f"[BLOB-REPO-STORE] Starting upload attempt - "
+                    f"Analysis-ID: {analysis_id}, "
+                    f"Attempt: {attempt}/{self.max_retry_attempts}"
+                )
+                
                 try:
                     # Get container client
                     container_client = self.blob_service_client.get_container_client(
                         self.container_name
                     )
                     
+                    self.logger.info(
+                        f"[BLOB-REPO-STORE] Uploading document file - "
+                        f"Analysis-ID: {analysis_id}, "
+                        f"Document-Path: {document_blob_path}, "
+                        f"File-Size: {len(document_data)} bytes"
+                    )
+                    
                     # Upload document file
-                    await container_client.upload_blob(
+                    container_client.upload_blob(
                         name=document_blob_path,
                         data=document_data,
                         content_type=content_type,
@@ -209,9 +318,15 @@ class BlobStorageRepository:
                         overwrite=True
                     )
                     
+                    self.logger.info(
+                        f"[BLOB-REPO-STORE] Uploading metadata file - "
+                        f"Analysis-ID: {analysis_id}, "
+                        f"Metadata-Path: {metadata_blob_path}"
+                    )
+                    
                     # Upload metadata file  
                     metadata_json = json.dumps(storage_metadata, indent=2, default=str)
-                    await container_client.upload_blob(
+                    container_client.upload_blob(
                         name=metadata_blob_path,
                         data=metadata_json.encode('utf-8'),
                         content_type='application/json',
@@ -224,11 +339,12 @@ class BlobStorageRepository:
                     )
                     
                     self.logger.info(
-                        "Low-confidence document stored successfully",
-                        analysis_id=analysis_id,
-                        document_path=document_blob_path,
-                        metadata_path=metadata_blob_path,
-                        correlation_id=correlation_id
+                        f"[BLOB-REPO-STORE] Low-confidence document stored successfully - "
+                        f"Analysis-ID: {analysis_id}, "
+                        f"Document-Path: {document_blob_path}, "
+                        f"Metadata-Path: {metadata_blob_path}, "
+                        f"Attempt: {attempt}, "
+                        f"Correlation-ID: {correlation_id}"
                     )
                     
                     # Return storage information
@@ -246,22 +362,25 @@ class BlobStorageRepository:
                     if attempt < self.max_retry_attempts:
                         delay = self.retry_delay_seconds * (2 ** (attempt - 1))
                         self.logger.warning(
-                            f"Blob storage error, retrying in {delay} seconds",
-                            attempt=attempt,
-                            analysis_id=analysis_id,
-                            error_message=str(e),
-                            correlation_id=correlation_id
+                            f"[BLOB-REPO-STORE] Azure storage error, retrying - "
+                            f"Attempt: {attempt}/{self.max_retry_attempts}, "
+                            f"Retry-Delay: {delay}s, "
+                            f"Analysis-ID: {analysis_id}, "
+                            f"Error: {str(e)}, "
+                            f"Error-Type: {type(e).__name__}, "
+                            f"Correlation-ID: {correlation_id}"
                         )
-                        await asyncio.sleep(delay)
+                        time.sleep(delay)
                         continue
                     
                     # Max retries exceeded
                     self.logger.error(
-                        "Blob storage failed after maximum retries",
-                        analysis_id=analysis_id,
-                        max_attempts=self.max_retry_attempts,
-                        error_message=str(e),
-                        correlation_id=correlation_id
+                        f"[BLOB-REPO-STORE] Blob storage failed after maximum retries - "
+                        f"Analysis-ID: {analysis_id}, "
+                        f"Max-Attempts: {self.max_retry_attempts}, "
+                        f"Error: {str(e)}, "
+                        f"Error-Type: {type(e).__name__}, "
+                        f"Correlation-ID: {correlation_id}"
                     )
                     
                     error_response = ErrorResponse(
@@ -283,10 +402,10 @@ class BlobStorageRepository:
             
         except Exception as e:
             self.logger.error(
-                "Unexpected error during document storage",
-                analysis_id=analysis_id,
-                exception=e,
-                correlation_id=correlation_id
+                f"Unexpected error during document storage - "
+                f"Analysis-ID: {analysis_id}, "
+                f"Exception: {e}, "
+                f"Correlation-ID: {correlation_id}"
             )
             
             error_response = ErrorResponse(
@@ -297,7 +416,7 @@ class BlobStorageRepository:
             )
             return None, error_response
 
-    async def retrieve_document_metadata(
+    def retrieve_document_metadata(
         self,
         analysis_id: str,
         correlation_id: Optional[str] = None
@@ -339,14 +458,14 @@ class BlobStorageRepository:
                         include=['metadata']
                     )
                     
-                    async for blob in blobs:
+                    for blob in blobs:
                         if (analysis_id in blob.name and 
                             blob.name.endswith('metadata.json')):
                             
                             # Download and parse metadata
                             blob_client = container_client.get_blob_client(blob.name)
-                            metadata_content = await blob_client.download_blob()
-                            metadata_text = await metadata_content.readall()
+                            metadata_content = blob_client.download_blob()
+                            metadata_text = metadata_content.readall()
                             metadata = json.loads(metadata_text.decode('utf-8'))
                             
                             if metadata.get('analysis_id') == analysis_id:
@@ -399,7 +518,7 @@ class BlobStorageRepository:
             )
             return None, error_response
 
-    async def list_pending_review_documents(
+    def list_pending_review_documents(
         self,
         days_back: int = 30,
         correlation_id: Optional[str] = None
@@ -438,13 +557,13 @@ class BlobStorageRepository:
                 include=['metadata']
             )
             
-            async for blob in blobs:
+            for blob in blobs:
                 if blob.name.endswith('metadata.json'):
                     try:
                         # Download and parse metadata
                         blob_client = container_client.get_blob_client(blob.name)
-                        metadata_content = await blob_client.download_blob()
-                        metadata_text = await metadata_content.readall()
+                        metadata_content = blob_client.download_blob()
+                        metadata_text = metadata_content.readall()
                         metadata = json.loads(metadata_text.decode('utf-8'))
                         
                         # Check if within date range
@@ -495,7 +614,7 @@ class BlobStorageRepository:
             )
             return None, error_response
 
-    async def _ensure_container_exists(self):
+    def _ensure_container_exists(self):
         """
         Ensure the storage container exists, create if it doesn't.
         
@@ -507,19 +626,33 @@ class BlobStorageRepository:
                 self.container_name
             )
             
+            self.logger.info(
+                f"[BLOB-REPO-CONTAINER] Checking container existence - Container: {self.container_name}"
+            )
+            
             # Check if container exists, create if not
             try:
-                await container_client.get_container_properties()
-                self.logger.debug(f"Container '{self.container_name}' exists")
+                properties = container_client.get_container_properties()
+                self.logger.info(
+                    f"[BLOB-REPO-CONTAINER] Container exists - "
+                    f"Container: {self.container_name}, "
+                    f"Last-Modified: {properties.last_modified.isoformat() if properties.last_modified else 'None'}"
+                )
             except ResourceNotFoundError:
-                await container_client.create_container()
-                self.logger.info(f"Container '{self.container_name}' created")
+                self.logger.info(
+                    f"[BLOB-REPO-CONTAINER] Container not found, creating - Container: {self.container_name}"
+                )
+                container_client.create_container()
+                self.logger.info(
+                    f"[BLOB-REPO-CONTAINER] Container created successfully - Container: {self.container_name}"
+                )
                 
         except AzureError as e:
             self.logger.error(
-                "Error ensuring container exists",
-                container_name=self.container_name,
-                exception=e
+                f"[BLOB-REPO-CONTAINER] Error ensuring container exists - "
+                f"Container: {self.container_name}, "
+                f"Exception: {str(e)}, "
+                f"Exception-Type: {type(e).__name__}"
             )
             raise
 
@@ -537,7 +670,7 @@ class BlobStorageRepository:
         except Exception:
             return 'unknown'
 
-    async def health_check(self) -> Dict[str, Any]:
+    def health_check(self) -> Dict[str, Any]:
         """
         Perform health check on Blob Storage connectivity.
         
@@ -551,7 +684,7 @@ class BlobStorageRepository:
             )
             
             # Simple connectivity test
-            properties = await container_client.get_container_properties()
+            properties = container_client.get_container_properties()
             
             health_status = {
                 "service": "blob_storage",
@@ -562,11 +695,11 @@ class BlobStorageRepository:
                 "last_modified": properties.last_modified.isoformat() if properties.last_modified else None
             }
             
-            self.logger.info("Blob Storage health check completed", status="healthy")
+            self.logger.info(f"Blob Storage health check completed - Status: healthy")
             return health_status
             
         except Exception as e:
-            self.logger.error("Blob Storage health check failed", exception=e)
+            self.logger.error(f"Blob Storage health check failed - Exception: {e}")
             return {
                 "service": "blob_storage",
                 "status": "unhealthy",

@@ -1,0 +1,18 @@
+{
+    "python.defaultInterpreterPath": "./.venv/Scripts/python.exe",
+    "python.terminal.activateEnvironment": true,
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": true,
+    "python.formatting.provider": "black",
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/*.pyc": true,
+        ".venv": false
+    },
+    "azure-functions-for-vscode.showCoreToolsWarning": false,
+    "azure-functions-for-vscode.projectRuntime": "~4",
+    "azure-functions-for-vscode.projectLanguage": "Python",
+    "azure-functions-for-vscode.preDeployTask": "",
+    "debug.console.fontSize": 12,
+    "debug.console.lineHeight": 18
+}

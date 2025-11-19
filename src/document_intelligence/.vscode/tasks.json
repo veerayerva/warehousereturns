@@ -1,0 +1,28 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "func: host start with debug",
+            "type": "shell",
+            "command": "func start --python-debug-port 5678",
+            "group": "build",
+            "options": {
+                "cwd": "${workspaceFolder}/src/document_intelligence"
+            },
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "azure-functions",
+                "pattern": [
+                    {
+                        "regexp": "^.*$"
+                    }
+                ],
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "^.*Stopping host.*",
+                    "endsPattern": "^.*Job host started.*"
+                }
+            }
+        }
+    ]
+}

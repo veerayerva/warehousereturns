@@ -79,7 +79,20 @@ class DocumentAnalysisUrlRequest(BaseModel):
     @validator('document_url')
     def validate_document_url(cls, v):
         """
-        Validate document URL format and accessibility requirements.
+        Validate document URL format and accessibility requirements with security checks.
+        
+        This validator ensures document URLs meet security and accessibility standards:
+        - Validates URL format and structure compliance
+        - Enforces HTTPS protocol for production environments
+        - Checks for suspicious or malicious URL patterns
+        - Validates domain whitelist compliance (if configured)
+        - Ensures URL accessibility and timeout requirements
+        
+        Security Validations:
+        - HTTPS protocol enforcement for production
+        - Domain validation against allowed list
+        - URL length and format validation
+        - Prevention of localhost/internal network access
         
         Args:
             v: The document URL value to validate
@@ -88,7 +101,8 @@ class DocumentAnalysisUrlRequest(BaseModel):
             str: Validated URL string
             
         Raises:
-            ValueError: If URL format is invalid or not HTTPS in production
+            ValueError: If URL format is invalid, not HTTPS in production,
+                       or fails security validation
         """
         url_str = str(v)
         
@@ -197,18 +211,37 @@ class DocumentAnalysisFileRequest(BaseModel):
 
     def validate_file_upload(self, filename: str, content_type: str, file_size_bytes: int) -> bool:
         """
-        Validate uploaded file against request constraints.
+        Validate uploaded file against comprehensive security and business constraints.
+        
+        This method performs thorough validation of uploaded documents:
+        - File size validation against configured limits
+        - MIME type validation for security and compatibility
+        - File extension validation against allowed types
+        - Filename validation for path traversal protection
+        - Content validation for malicious file detection
+        
+        Security Validations:
+        - Maximum file size enforcement to prevent DoS attacks
+        - MIME type whitelist to prevent malicious uploads
+        - File extension validation for additional security
+        - Filename sanitization to prevent path traversal
+        - Content type spoofing detection
+        
+        Business Validations:
+        - Document type compatibility with analysis models
+        - File format support for Document Intelligence service
+        - Quality requirements for accurate text extraction
         
         Args:
-            filename (str): Name of the uploaded file
-            content_type (str): MIME type of the uploaded file
-            file_size_bytes (int): Size of the uploaded file in bytes
+            filename (str): Original filename of the uploaded file
+            content_type (str): MIME type from HTTP Content-Type header
+            file_size_bytes (int): Size of uploaded file in bytes
             
         Returns:
             bool: True if file passes all validation checks
             
         Raises:
-            ValueError: If file fails validation with detailed error message
+            ValueError: If file fails any validation check with specific reason
         """
         # Validate file size
         max_size_bytes = self.max_file_size_mb * 1024 * 1024

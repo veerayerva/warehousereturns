@@ -18,17 +18,50 @@ class LoggingMiddleware:
     
     def __init__(self, function_name: str):
         """
-        Initialize logging middleware.
+        Initialize logging middleware with function-specific configuration.
+        
+        This constructor sets up comprehensive logging infrastructure for Azure Functions:
+        - Creates function-specific logger with proper naming convention
+        - Configures correlation tracking for request tracing
+        - Sets up structured logging for Application Insights integration
+        - Initializes performance monitoring capabilities
+        
+        Logger Configuration:
+        - Namespace: 'warehouse_returns.{function_name}'
+        - Log Level: Inherited from application configuration
+        - Formatting: JSON structured for cloud logging
+        - Destination: Azure Application Insights + Console
         
         Args:
-            function_name: Name of the Azure Function
+            function_name (str): Azure Function name for logger identification
+                               e.g., 'document_intelligence', 'pieceinfo_api'
         """
         self.function_name = function_name
         self.logger = get_logger(f'warehouse_returns.{function_name}')
     
     def log_request(self, req: func.HttpRequest, correlation_id: str = None) -> str:
         """
-        Log incoming HTTP request.
+        Log comprehensive incoming HTTP request details with correlation tracking.
+        
+        This method captures complete request information for debugging and monitoring:
+        - HTTP method, URL, and headers (security-filtered)
+        - Request body size and content type
+        - Client IP and user agent information
+        - Correlation ID for request tracing across services
+        - Timestamp for performance analysis
+        
+        Security Considerations:
+        - Sensitive headers are filtered out (Authorization, API keys)
+        - Request body content is not logged for privacy
+        - Only metadata and size information is captured
+        
+        Args:
+            req (func.HttpRequest): Azure Functions HTTP request object
+            correlation_id (str, optional): Existing correlation ID or auto-generated
+        
+        Returns:
+            str: Correlation ID for this request (generated if not provided)
+        """
         
         Args:
             req: Azure Functions HTTP request
@@ -74,13 +107,26 @@ class LoggingMiddleware:
     def log_response(self, response: func.HttpResponse, correlation_id: str, 
                     duration_ms: float, additional_context: Dict[str, Any] = None) -> None:
         """
-        Log outgoing HTTP response.
+        Log comprehensive HTTP response details with performance metrics and context.
+        
+        This method captures detailed response information for monitoring and debugging:
+        - HTTP status code and response headers
+        - Processing duration for performance analysis
+        - Response size and content type information
+        - Correlation ID for request/response tracking
+        - Additional business context and metadata
+        
+        Performance Monitoring:
+        - Processing duration (milliseconds) for SLA tracking
+        - Response size metrics for bandwidth analysis
+        - Status code distribution for health monitoring
+        - Error rate calculation for alerting
         
         Args:
-            response: Azure Functions HTTP response
-            correlation_id: Request correlation ID
-            duration_ms: Request processing duration in milliseconds
-            additional_context: Additional context to log
+            response (func.HttpResponse): Azure Functions HTTP response object
+            correlation_id (str): Request correlation ID for distributed tracing
+            duration_ms (float): Request processing duration in milliseconds
+            additional_context (Dict[str, Any], optional): Business-specific context data
         """
         response_details = {
             'status_code': response.status_code,

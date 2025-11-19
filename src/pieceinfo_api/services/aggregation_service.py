@@ -42,10 +42,39 @@ class SimpleAggregationService:
     
     def __init__(self):
         """
-        Initialize the aggregation service with HTTP client.
+        Initialize the aggregation service with HTTP client and external API configuration.
         
-        The HTTP client is configured with SSL settings, retry logic,
-        and subscription key authentication based on environment variables.
+        Sets up the complete infrastructure for multi-source data aggregation:
+        - Configures secure HTTP client with SSL/TLS verification
+        - Establishes connection pooling for performance optimization  
+        - Sets up retry logic with exponential backoff for resilience
+        - Configures authentication headers for external API access
+        - Validates required environment configuration variables
+        
+        The HTTP client is pre-configured with the following settings:
+        - SSL verification enabled for secure external communications
+        - Request timeout: 30 seconds per API call
+        - Retry attempts: 3 with exponential backoff (2, 4, 8 seconds)
+        - Connection pooling: Reuses connections for performance
+        - User-Agent: Identifies requests as warehouse returns system
+        
+        **Required Environment Variables:**
+        - API endpoint URLs for inventory, product, and vendor services
+        - Authentication keys/tokens for external API access
+        - Optional: Custom timeout and retry configuration
+        - Optional: SSL certificate configuration for enterprise environments
+        
+        Raises:
+            Exception: If HTTP client initialization fails due to:
+                - Missing required environment variables
+                - Invalid SSL certificate configuration  
+                - Network connectivity issues during setup
+                - Authentication credential validation failures
+                
+        Example:
+            >>> service = SimpleAggregationService()
+            >>> # Service is ready for piece information aggregation
+            >>> piece_info = await service.get_aggregated_piece_info('170080637')
         """
         try:
             self.http_client = SimpleHTTPClient()
