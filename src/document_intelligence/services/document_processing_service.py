@@ -139,7 +139,7 @@ class DocumentProcessingService:
         
         # Configuration
         if confidence_threshold is None:
-            confidence_threshold = float(os.getenv('CONFIDENCE_THRESHOLD', '0.7'))
+            confidence_threshold = float(os.getenv('CONFIDENCE_THRESHOLD', '0.3'))
         
         self.confidence_threshold = confidence_threshold
         

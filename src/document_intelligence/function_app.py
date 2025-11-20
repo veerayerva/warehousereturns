@@ -293,7 +293,7 @@ def _handle_file_upload(req, processing_service, correlation_id):
         file_request = DocumentAnalysisFileRequest(
             document_type=DocumentType.SERIAL_NUMBER,
             model_id="serialnumber",
-            confidence_threshold=float(os.getenv('CONFIDENCE_THRESHOLD', '0.7')),
+            confidence_threshold=float(os.getenv('CONFIDENCE_THRESHOLD', '0.3')),
             correlation_id=correlation_id
         )
         

@@ -234,7 +234,8 @@ class DocumentIntelligenceService:
         )
         
         try:
-            # Prepare analysis request
+            # Prepare analysis request with URL source
+            from azure.ai.documentintelligence.models import AnalyzeDocumentRequest
             analyze_request = AnalyzeDocumentRequest(url_source=str(request.document_url))
             
             # Log the API request details

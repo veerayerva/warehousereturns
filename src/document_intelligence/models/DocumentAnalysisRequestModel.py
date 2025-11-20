@@ -8,6 +8,7 @@ and file upload scenarios with comprehensive validation.
 from pydantic import BaseModel, Field, HttpUrl, validator, ConfigDict
 from typing import Optional, Dict, Any
 from enum import Enum
+import os
 
 
 class DocumentType(str, Enum):
@@ -58,7 +59,7 @@ class DocumentAnalysisUrlRequest(BaseModel):
     )
     
     confidence_threshold: float = Field(
-        default=0.7,
+        default_factory=lambda: float(os.getenv('CONFIDENCE_THRESHOLD', '0.3')),
         ge=0.0,
         le=1.0,
         description="Minimum confidence score (0.0-1.0) for field acceptance"
@@ -174,7 +175,7 @@ class DocumentAnalysisFileRequest(BaseModel):
     )
     
     confidence_threshold: float = Field(
-        default=0.7,
+        default_factory=lambda: float(os.getenv('CONFIDENCE_THRESHOLD', '0.3')),
         ge=0.0,
         le=1.0,
         description="Minimum confidence score (0.0-1.0) for field acceptance"
