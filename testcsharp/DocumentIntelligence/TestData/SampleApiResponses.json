@@ -1,0 +1,117 @@
+{
+  "documentAnalysisResponses": {
+    "invoiceAnalysis": {
+      "resultId": "invoice-analysis-123",
+      "status": "succeeded",
+      "createdDateTime": "2025-11-19T10:00:00Z",
+      "lastUpdatedDateTime": "2025-11-19T10:05:00Z",
+      "analyzeResult": {
+        "modelId": "prebuilt-invoice",
+        "stringIndexType": "textElements",
+        "content": "Invoice #INV-001 Date: 2025-11-19 Amount: $1,250.00",
+        "documents": [
+          {
+            "docType": "invoice",
+            "fields": {
+              "InvoiceId": {
+                "type": "string",
+                "valueString": "INV-001",
+                "confidence": 0.95
+              },
+              "InvoiceTotal": {
+                "type": "currency",
+                "valueCurrency": {
+                  "amount": 1250.00,
+                  "currencySymbol": "$"
+                },
+                "confidence": 0.92
+              }
+            },
+            "confidence": 0.91
+          }
+        ]
+      }
+    },
+    "receiptAnalysis": {
+      "resultId": "receipt-analysis-456", 
+      "status": "succeeded",
+      "analyzeResult": {
+        "modelId": "prebuilt-receipt",
+        "content": "Store Receipt Total: $45.67",
+        "documents": [
+          {
+            "docType": "receipt",
+            "fields": {
+              "Total": {
+                "type": "currency",
+                "valueCurrency": {
+                  "amount": 45.67,
+                  "currencySymbol": "$"
+                },
+                "confidence": 0.94
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "errorResponses": {
+    "invalidFormat": {
+      "error": {
+        "code": "InvalidDocumentFormat",
+        "message": "The document format is not supported",
+        "target": "file"
+      },
+      "correlationId": "error-correlation-123"
+    },
+    "invalidUrl": {
+      "error": {
+        "code": "InvalidUrl", 
+        "message": "The document URL is not accessible",
+        "target": "documentUrl"
+      },
+      "correlationId": "error-correlation-456"
+    }
+  },
+  "healthCheckResponses": {
+    "healthy": {
+      "status": "Healthy",
+      "timestamp": "2025-11-19T15:30:00Z",
+      "version": "1.0.0",
+      "dependencies": {
+        "documentIntelligence": "Healthy",
+        "blobStorage": "Healthy",
+        "configuration": "Healthy"
+      }
+    },
+    "unhealthy": {
+      "status": "Unhealthy",
+      "timestamp": "2025-11-19T15:30:00Z",
+      "version": "1.0.0",
+      "dependencies": {
+        "documentIntelligence": "Unhealthy",
+        "blobStorage": "Healthy",
+        "configuration": "Healthy"
+      }
+    }
+  },
+  "supportedModels": {
+    "prebuilt-invoice": {
+      "name": "Invoice Model",
+      "description": "Extracts key information from invoices"
+    },
+    "prebuilt-receipt": {
+      "name": "Receipt Model",
+      "description": "Extracts key information from receipts"
+    },
+    "prebuilt-document": {
+      "name": "General Document Model", 
+      "description": "Extracts text and structure from general documents"
+    },
+    "prebuilt-businessCard": {
+      "name": "Business Card Model",
+      "description": "Extracts contact information from business cards"
+    }
+  }
+}
