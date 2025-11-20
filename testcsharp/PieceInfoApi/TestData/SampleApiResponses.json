@@ -1,0 +1,59 @@
+{
+  "pieceInventoryResponse": {
+    "valid": {
+      "piece_inventory_key": "170080637",
+      "sku": "67007500",
+      "vendor_code": "VIZIA",
+      "warehouse_location": "WHKCTY",
+      "rack_location": "R03-019-03",
+      "serial_number": "SZVOU5GB1600294",
+      "family": "ELECTRONICS",
+      "purchase_reference_number": "PO-2024-001234"
+    },
+    "notFound": {
+      "error": "Piece not found",
+      "statusCode": 404
+    }
+  },
+  "productMasterResponse": {
+    "valid": {
+      "sku": "67007500",
+      "description": "ALL-IN-ONE SOUNDBAR",
+      "model_no": "V-SB2921-C6",
+      "brand": "VIZIO",
+      "category": "AUDIO",
+      "group": "SOUNDBARS"
+    },
+    "notFound": {
+      "error": "Product not found",
+      "statusCode": 404
+    }
+  },
+  "vendorDetailsResponse": {
+    "valid": {
+      "vendor_code": "VIZIA",
+      "vendor_name": "NIGHT & DAY",
+      "address": {
+        "address_line1": "123 Vendor Street",
+        "address_line2": "Suite 100",
+        "city": "Commerce City",
+        "state": "CA",
+        "zip_code": "90210"
+      },
+      "contact": {
+        "rep_name": "John Smith",
+        "primary_rep_email": "john.smith@vendor.com",
+        "secondary_rep_email": "support@vendor.com",
+        "exec_email": "exec@vendor.com"
+      },
+      "policies": {
+        "serial_number_required": true,
+        "vendor_return": true
+      }
+    },
+    "notFound": {
+      "error": "Vendor not found",
+      "statusCode": 404
+    }
+  }
+}
