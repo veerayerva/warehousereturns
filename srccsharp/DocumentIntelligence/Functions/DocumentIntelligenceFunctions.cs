@@ -14,11 +14,103 @@ using WarehouseReturns.DocumentIntelligence.Services;
 namespace WarehouseReturns.DocumentIntelligence.Functions;
 
 /// <summary>
-/// Azure Functions for Document Intelligence operations
+/// Azure Functions HTTP API for enterprise document intelligence and automated field extraction services.
 /// 
-/// Provides REST API endpoints for document analysis using Azure Document Intelligence
-/// with health monitoring and API documentation capabilities.
+/// This class provides a comprehensive REST API for document processing operations using Azure Document Intelligence,
+/// designed for high-throughput production workloads with enterprise-grade reliability, security, and monitoring.
+/// 
+/// API Endpoints Overview:
+/// - POST /api/process-document-url: Process documents from publicly accessible URLs
+/// - POST /api/process-document-file: Process uploaded document files with multipart form support
+/// - GET /api/health: Comprehensive health check with dependency validation and performance metrics
+/// - GET /api/docs: Interactive Swagger UI documentation interface for API exploration
+/// - GET /api/swagger: OpenAPI 3.0 specification in JSON format for API integration
+/// 
+/// Enterprise Features:
+/// - Automatic request validation with detailed error responses and field-level validation messages
+/// - Correlation ID tracking for distributed system debugging and audit trail maintenance
+/// - Comprehensive structured logging with Application Insights integration and custom metrics
+/// - Content Security Policy (CSP) headers and CORS support for web application integration
+/// - Rate limiting and request throttling capabilities (configured at Azure Function App level)
+/// - Authentication support via Azure Function keys, Azure Active Directory, or custom JWT tokens
+/// - Request/response compression for optimal network performance and reduced bandwidth costs
+/// - OpenAPI 3.0 specification with detailed schemas for automated client code generation
+/// 
+/// Security Implementation:
+/// - Input validation and sanitization preventing injection attacks and malformed requests
+/// - Content-Type validation ensuring only supported document formats are processed
+/// - File size limits and timeout controls preventing resource exhaustion attacks
+/// - Secure error handling that prevents information leakage while providing actionable feedback
+/// - Request logging with PII filtering for compliance with data protection regulations
+/// 
+/// Performance Characteristics:
+/// - Asynchronous processing with cancellation token support for responsive user experiences
+/// - Memory-efficient streaming for large document processing without excessive RAM usage
+/// - Connection pooling and resource management for optimal Azure service utilization
+/// - Configurable timeout controls balancing responsiveness with processing reliability
+/// - Automatic scaling based on request volume with cold start optimization strategies
 /// </summary>
+/// <remarks>
+/// Production Deployment Considerations:
+/// 
+/// Function App Configuration:
+/// - Enable Application Insights for comprehensive telemetry collection and alerting
+/// - Configure appropriate scaling limits based on expected request volume and processing time
+/// - Set up health check monitoring with automated alerting for service degradation
+/// - Implement proper API key management using Azure Key Vault integration
+/// - Configure CORS policies for cross-origin web application access
+/// 
+/// Monitoring and Alerting Setup:
+/// - Request rate monitoring with alerts for unusual traffic patterns or potential attacks
+/// - Error rate tracking with automated escalation for service reliability issues
+/// - Performance monitoring with SLA alerting for response time degradation
+/// - Dependency health monitoring for Azure Document Intelligence and Blob Storage services
+/// - Cost monitoring and budget alerts for usage optimization and financial control
+/// 
+/// Integration Patterns:
+/// - Webhook notifications for asynchronous processing completion callbacks
+/// - Event Grid integration for document processing workflow orchestration
+/// - Service Bus integration for reliable message queuing and batch processing
+/// - Logic Apps integration for complex business workflow automation
+/// - Power Platform integration for low-code business application development
+/// 
+/// Example Usage:
+/// <code>
+/// // Direct HTTP client usage
+/// var client = new HttpClient();
+/// client.DefaultRequestHeaders.Add("x-functions-key", "your-function-key");
+/// 
+/// var request = new DocumentAnalysisUrlRequest
+/// {
+///     DocumentUrl = "https://storage.blob.core.windows.net/docs/invoice.pdf",
+///     DocumentType = DocumentType.Invoice,
+///     ConfidenceThreshold = 0.85
+/// };
+/// 
+/// var response = await client.PostAsJsonAsync(
+///     "https://your-app.azurewebsites.net/api/process-document-url", 
+///     request);
+/// 
+/// // JavaScript/TypeScript frontend integration
+/// const processDocument = async (documentUrl: string) => {
+///   const response = await fetch('/api/process-document-url', {
+///     method: 'POST',
+///     headers: {
+///       'Content-Type': 'application/json',
+///       'x-functions-key': 'your-function-key'
+///     },
+///     body: JSON.stringify({
+///       document_url: documentUrl,
+///       document_type: 'product_label',
+///       confidence_threshold: 0.8
+///     })
+///   });
+///   
+///   const result = await response.json();
+///   return result;
+/// };
+/// </code>
+/// </remarks>
 public class DocumentIntelligenceFunctions
 {
     private readonly IDocumentProcessingService _documentProcessingService;

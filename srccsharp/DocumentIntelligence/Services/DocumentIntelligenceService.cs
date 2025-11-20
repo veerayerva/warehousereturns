@@ -20,11 +20,76 @@ using AzureDocumentWord = Azure.AI.DocumentIntelligence.DocumentWord;
 namespace WarehouseReturns.DocumentIntelligence.Services;
 
 /// <summary>
-/// Service for integrating with Azure Document Intelligence API
+/// Enterprise-grade service for Azure Document Intelligence operations providing automated document processing capabilities.
 /// 
-/// Handles document analysis using Azure Document Intelligence with retry logic,
-/// error handling, and response conversion to internal models.
+/// This service acts as the primary interface to Azure Document Intelligence (formerly Form Recognizer),
+/// handling document analysis, field extraction, and confidence scoring with production-ready reliability features.
+/// 
+/// Key Features:
+/// - Document analysis from URLs and byte streams with automatic format detection
+/// - Configurable model selection supporting prebuilt and custom trained models
+/// - Intelligent retry logic with exponential backoff for transient Azure service failures
+/// - Comprehensive error categorization and detailed structured logging for operations monitoring
+/// - Performance metrics collection and timing analysis for SLA tracking
+/// - Support for multiple document types including invoices, receipts, forms, and custom business documents
+/// - Automatic content type validation and file size limit enforcement
+/// - Request correlation tracking for distributed system debugging
+/// 
+/// Usage Examples:
+/// <code>
+/// // Analyze invoice from public URL
+/// var urlRequest = new DocumentAnalysisUrlRequest 
+/// {
+///     DocumentUrl = "https://storage.blob.core.windows.net/invoices/inv-2024-001.pdf",
+///     DocumentType = DocumentType.Invoice,
+///     ModelId = "prebuilt-invoice",
+///     ConfidenceThreshold = 0.85
+/// };
+/// var (response, error) = await service.AnalyzeDocumentFromUrlAsync(urlRequest, "CORR-12345");
+/// 
+/// // Process uploaded receipt file
+/// var fileRequest = new DocumentAnalysisFileRequest
+/// {
+///     FileContent = uploadedBytes,
+///     Filename = "receipt-store-abc.pdf", 
+///     ContentType = "application/pdf",
+///     DocumentType = DocumentType.Receipt
+/// };
+/// var (response, error) = await service.AnalyzeDocumentFromBytesAsync(
+///     uploadedBytes, fileRequest, "receipt.pdf", "application/pdf", "CORR-67890");
+/// </code>
+/// 
+/// Thread Safety: This service is thread-safe and designed for dependency injection as a singleton.
+/// Performance: Typical response times range from 2-15 seconds based on document complexity and Azure region.
+/// Reliability: Implements automatic retry with exponential backoff for HTTP 429, 500-503 status codes.
+/// Monitoring: Emits detailed telemetry to Application Insights including timing, success rates, and error categorization.
 /// </summary>
+/// <remarks>
+/// Azure Service Integration:
+/// - Azure Document Intelligence: Primary AI-powered document processing engine
+/// - Azure Monitor/Application Insights: Comprehensive telemetry and performance monitoring
+/// - Azure Key Vault: Secure API key management (recommended for production)
+/// 
+/// Required Configuration (via IOptions&lt;DocumentIntelligenceSettings&gt;):
+/// - DocumentIntelligenceEndpoint: Azure Cognitive Services endpoint URL
+/// - DocumentIntelligenceKey: API access key with Document Intelligence permissions
+/// - ApiVersion: Document Intelligence API version (default: 2024-11-30)
+/// - Timeout: Request timeout in seconds (default: 300)
+/// - MaxRetryAttempts: Maximum retry attempts for failed requests (default: 3)
+/// - EnableDetailedLogging: Enable verbose logging for debugging (default: false)
+/// 
+/// Error Handling Strategy:
+/// - Transient errors (429, 500-503): Automatic retry with exponential backoff
+/// - Client errors (400, 401, 403): Immediate failure with detailed error information  
+/// - Network timeouts: Configurable timeout with retry on timeout
+/// - Invalid responses: Structured error parsing with correlation ID tracking
+/// 
+/// Security Considerations:
+/// - API keys should be stored in Azure Key Vault in production environments
+/// - Document URLs must be publicly accessible or use SAS tokens for private storage
+/// - File uploads are validated for content type and size limits before processing
+/// - All requests include correlation IDs for security audit trails
+/// </remarks>
 public class DocumentIntelligenceService : IDocumentIntelligenceService
 {
     private readonly DocumentIntelligenceClient _client;

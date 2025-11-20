@@ -8,25 +8,96 @@ using WarehouseReturns.DocumentIntelligence.Repositories;
 namespace WarehouseReturns.DocumentIntelligence.Services;
 
 /// <summary>
-/// Comprehensive document processing service implementation for Azure Document Intelligence operations.
+/// Enterprise document processing orchestration service managing the complete document intelligence workflow.
 /// 
-/// This service orchestrates the complete document analysis workflow including:
-/// - Document download from URLs with retry logic and validation
-/// - Azure Document Intelligence API integration for field extraction
-/// - Confidence evaluation and quality assurance routing
-/// - Blob storage management for low-confidence documents requiring review
-/// - Health monitoring and dependency validation
-/// - Comprehensive error handling and logging
+/// This service acts as the high-level orchestrator for document processing operations, coordinating between
+/// multiple Azure services and implementing sophisticated business logic for automated document analysis.
+/// It handles the complete end-to-end workflow from document ingestion to final result delivery.
 /// 
-/// The service implements enterprise-grade patterns including:
-/// - Structured logging with correlation IDs
-/// - Retry policies for transient failures
-/// - Performance monitoring and metrics collection
-/// - Security validation and input sanitization
+/// Core Workflow Components:
+/// - Document Acquisition: Secure download from URLs with authentication, validation, and retry logic
+/// - Format Validation: Content type verification, file size limits, and security scanning
+/// - AI Processing: Integration with Azure Document Intelligence for field extraction and analysis
+/// - Quality Assurance: Confidence threshold evaluation and automated quality routing decisions
+/// - Storage Management: Intelligent blob storage for documents requiring manual review or archival
+/// - Health Monitoring: Comprehensive dependency health checks and service availability validation
+/// - Error Management: Sophisticated error categorization, retry logic, and failure notification
+/// - Performance Tracking: Detailed metrics collection, timing analysis, and SLA monitoring
+/// 
+/// Business Logic Features:
+/// - Configurable confidence thresholds with document-type specific rules
+/// - Automatic quality assurance routing for low-confidence extractions
+/// - Metadata enrichment with processing timestamps, correlation tracking, and audit trails
+/// - Multi-format support including PDF, images (JPEG, PNG, TIFF), and Office documents
+/// - Batch processing capabilities with progress tracking and result aggregation
+/// - Integration with external systems through webhook notifications and event publishing
+/// 
+/// Enterprise Patterns Implementation:
+/// - Correlation ID propagation for distributed tracing and debugging
+/// - Structured logging with semantic search capabilities and alert integration  
+/// - Circuit breaker patterns for dependency failure isolation
+/// - Exponential backoff retry policies with jitter for load distribution
+/// - Comprehensive input validation and sanitization for security
+/// - Rate limiting and quota management for cost control
+/// - Performance counters and custom metrics for operational monitoring
 /// </summary>
 /// <example>
+/// Service Usage Examples:
 /// <code>
-/// // Dependency injection setup
+/// // Basic document processing from URL
+/// var urlRequest = new DocumentAnalysisUrlRequest
+/// {
+///     DocumentUrl = "https://storage.blob.core.windows.net/documents/invoice-2024-001.pdf",
+///     DocumentType = DocumentType.Invoice,
+///     ConfidenceThreshold = 0.85,
+///     CorrelationId = "PROC-2024-001234"
+/// };
+/// 
+/// var result = await documentProcessingService.ProcessDocumentFromUrlAsync(urlRequest, "USER-12345", cancellationToken);
+/// 
+/// if (result.Status == AnalysisStatus.Succeeded)
+/// {
+///     var serialNumber = result.SerialField?.Value;
+///     var confidence = result.SerialField?.Confidence;
+///     
+///     if (result.SerialField?.ConfidenceAcceptable == true)
+///     {
+///         // Process high-confidence result automatically
+///         await ProcessSerialNumber(serialNumber);
+///     }
+///     else
+///     {
+///         // Route to manual review queue
+///         await QueueForManualReview(result.AnalysisId, result.StorageInfo);
+///     }
+/// }
+/// 
+/// // File upload processing with metadata
+/// var fileRequest = new DocumentAnalysisFileRequest
+/// {
+///     FileContent = uploadedBytes,
+///     Filename = originalFilename,
+///     ContentType = detectedMimeType,
+///     DocumentType = DocumentType.ProductLabel,
+///     Metadata = new Dictionary&lt;string, object&gt;
+///     {
+///         ["UploadedBy"] = currentUser.Id,
+///         ["SourceSystem"] = "MobileApp",
+///         ["BusinessUnit"] = "Warehouse-East"
+///     }
+/// };
+/// 
+/// var result = await documentProcessingService.ProcessDocumentFromFileAsync(
+///     fileRequest, correlationId, cancellationToken);
+/// 
+/// // Health check integration
+/// var healthStatus = await documentProcessingService.CheckHealthAsync(cancellationToken);
+/// if (healthStatus.Status != HealthStatus.Healthy)
+/// {
+///     await SendHealthAlert(healthStatus);
+/// }
+/// 
+/// // Dependency injection configuration
 /// services.AddScoped&lt;IDocumentProcessingService, DocumentProcessingService&gt;();
 /// 
 /// // Usage in controller or function
