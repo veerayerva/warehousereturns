@@ -41,6 +41,11 @@ public class SharePointSettings
     public string SHAREPOINT_LIST_ID { get; set; } = string.Empty;
 
     /// <summary>
+    /// SharePoint Drive ID for image storage
+    /// </summary>
+    public string SHAREPOINT_DRIVE_ID { get; set; } = string.Empty;
+
+    /// <summary>
     /// Validate authentication configuration
     /// </summary>
     public bool IsValid()

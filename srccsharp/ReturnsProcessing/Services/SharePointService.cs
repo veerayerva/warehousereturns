@@ -1,5 +1,7 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Azure.Core;
 using Azure.Identity;
 using Microsoft.Extensions.Logging;
@@ -10,7 +12,6 @@ using Microsoft.Graph.Models.ODataErrors;
 using Newtonsoft.Json.Linq;
 using WarehouseReturns.ReturnsProcessing.Configuration;
 using WarehouseReturns.ReturnsProcessing.Models;
-using AttachmentInfo = WarehouseReturns.ReturnsProcessing.Models.AttachmentInfo;
 
 namespace WarehouseReturns.ReturnsProcessing.Services;
 
@@ -19,18 +20,13 @@ namespace WarehouseReturns.ReturnsProcessing.Services;
 /// </summary>
 public interface ISharePointService
 {
-    Task<VendorReturnEntry?> GetVendorReturnEntryAsync(string itemId);
-    Task<List<AttachmentInfo>> GetAllAttachmentsAsync(string itemId);
-    Task UpdateVendorReturnEntryAsync(string itemId, Dictionary<string, object> updates);
-
-    // Additional methods required by ReturnsProcessingService
     Task<QcItem?> GetListItemAsync(string listItemId, string correlationId);
-    Task<byte[]?> GetImageDataAsync(string listItemId, string fileName, string correlationId);
+    Task<byte[]?> GetAttachmentAsync(string listItemId, string fileName, string correlationId);
+    Task<(byte[]? ImageData, string? ContentType)> DownloadImageFromSharePointUrlAsync(string sharePointUrl, string correlationId);
     Task UpdateListItemAsync(string listItemId, ProcessingResult result, string correlationId);
     Task<bool> TestConnectionAsync();
     Task<List<SharePointListInfo>> DiscoverAvailableListsAsync(string correlationId);
     Task<List<SharePointFieldInfo>> GetAllListFieldsAsync(string correlationId);
-    Task<byte[]?> GetImageDataUsingManagedIdentityAsync(string listItemId, string fileName, string correlationId);
 }
 
 /// <summary>
@@ -96,83 +92,9 @@ public class SharePointService : ISharePointService
             "Supported methods are: ManagedIdentity, ClientCredentials");
     }
 
-    public async Task<VendorReturnEntry?> GetVendorReturnEntryAsync(string itemId)
-    {
-        try
-        {
-            _logger.LogInformation($"Getting SharePoint data for demo purposes - ItemId: {itemId}");
-
-            // Extract site info from configured URL
-            var siteUrl = _settings.SHAREPOINT_SITE_URL;
-            _logger.LogInformation($"Using configured SharePoint site: {siteUrl}");
-
-            // For now, return demo data
-            // Graph API requires site ID which we can get from the URL pattern
-            return CreateDemoEntry(itemId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, $"Error getting SharePoint data: {ex.Message}");
-            return CreateDemoEntry(itemId);
-        }
-    }
-    
-    private VendorReturnEntry CreateDemoEntry(string itemId)
-    {
-        _logger.LogInformation($"Creating demo entry for item {itemId}");
-        return new VendorReturnEntry
-        {
-            Id = itemId,
-            Title = "Demo SharePoint Item",
-            Status = "Retrieved from SharePoint",
-            RackLocation = "Demo-Rack-01",
-            PieceNumber = "DEMO-123456",
-            SerialNumber = "SN-DEMO-789",
-            Comments = "This is demo data retrieved from SharePoint to test the integration",
-            Vendor = "Demo Vendor",
-            Family = "Demo Family",
-            SkuNumber = "SKU-DEMO-001",
-            Created = DateTime.Now.ToString()
-        };
-    }
-
-    public async Task<List<AttachmentInfo>> GetAllAttachmentsAsync(string itemId)
-    {
-        try
-        {
-            _logger.LogInformation($"Getting attachments for item {itemId} - returning empty list for demo");
-            return new List<AttachmentInfo>();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, $"Error getting attachments for item {itemId}: {ex.Message}");
-            return new List<AttachmentInfo>();
-        }
-    }
-
-    public async Task UpdateVendorReturnEntryAsync(string itemId, Dictionary<string, object> updates)
-    {
-        try
-        {
-            _logger.LogInformation($"Demo update SharePoint item {itemId} with {updates.Count} fields");
-            
-            // For demo purposes, just log the updates
-            foreach (var update in updates)
-            {
-                _logger.LogInformation($"Update field {update.Key} = {update.Value}");
-            }
-            
-            await Task.Delay(100); // Simulate processing time
-            _logger.LogInformation($"Demo update completed for item {itemId}");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, $"Error updating SharePoint item {itemId}: {ex.Message}");
-            throw;
-        }
-    }
-
-    // Main method - simplified
+    /// <summary>
+    /// Get a SharePoint list item by ID
+    /// </summary>
     public async Task<QcItem?> GetListItemAsync(string listItemId, string correlationId)
     {
         try
@@ -263,6 +185,7 @@ public class SharePointService : ISharePointService
             DamageImage3Link = GetField<string>(fields, "DamageImage3Link"),
             DamageImage4Link = GetField<string>(fields, "DamageImage4Link"),
             DamageImage5Link = GetField<string>(fields, "DamageImage5Link"),
+            SerialImageLink = ExtractUrlFromHyperlinkField(fields, "SerialImageLink"),
             ReasonCategory = GetField<string>(fields, "ReasonCategory"),
             ReasonCode = GetField<string>(fields, "ReasonCode"),
             LocationCode = GetField<string>(fields, "LocationCode"),
@@ -278,6 +201,41 @@ public class SharePointService : ISharePointService
             PieceImage = attachments.GetValueOrDefault("PieceImage", string.Empty),
             SerialImage = attachments.GetValueOrDefault("SerialImage")
         };
+    }
+
+    // Extract SharePoint hyperlink field (which comes as JSON object with Url and Description)
+    private HyperlinkField? ExtractUrlFromHyperlinkField(IDictionary<string, object?> fields, string fieldName)
+    {
+        if (fields?.TryGetValue(fieldName, out var value) == true && value != null)
+        {
+            try
+            {
+                // SharePoint returns hyperlink fields as JSON objects: {"Description":"...", "Url":"..."}
+                if (value is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Object)
+                {
+                    var description = jsonElement.TryGetProperty("Description", out var descProperty) 
+                        ? descProperty.GetString() 
+                        : null;
+                    var url = jsonElement.TryGetProperty("Url", out var urlProperty) 
+                        ? urlProperty.GetString() 
+                        : null;
+
+                    if (!string.IsNullOrWhiteSpace(url))
+                    {
+                        return new HyperlinkField
+                        {
+                            Description = description,
+                            Url = url
+                        };
+                    }
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+        return null;
     }
 
     // Generic helper: Get typed field value
@@ -353,38 +311,32 @@ public class SharePointService : ISharePointService
     }
 
 
-    public async Task<byte[]?> GetImageDataAsync(string listItemId, string fileName, string correlationId)
+    /// <summary>
+    /// Download attachment from SharePoint list item using SharePoint REST API
+    /// </summary>
+    public async Task<byte[]?> GetAttachmentAsync(string listItemId, string fileName, string correlationId)
     {
         try
         {
             _logger.LogInformation(
-                $"Downloading attachment: {fileName} from item {listItemId} (Correlation: {correlationId})");
-
-            // Get site first
-            var site = await GetSiteAsync(correlationId);
-            if (site?.Id == null)
-            {
-                _logger.LogError($"Could not resolve site for downloading attachment (Correlation: {correlationId})");
-                return null;
-            }
+                $"[ATTACHMENT] Downloading attachment: {fileName} from item {listItemId} (Correlation: {correlationId})");
 
             // Build SharePoint REST API URL for attachment
-            // Format: {siteUrl}/_api/web/lists('{listId}')/items({itemId})/AttachmentFiles('{fileName}')/$value
+            // Format: {siteUrl}/_api/web/lists(guid'{listId}')/items({itemId})/AttachmentFiles('{fileName}')/$value
             var attachmentUrl =
                 $"{_settings.SHAREPOINT_SITE_URL}/_api/web/lists(guid'{_settings.SHAREPOINT_LIST_ID}')/items({listItemId})/AttachmentFiles('{Uri.EscapeDataString(fileName)}')/$value";
 
-            _logger.LogInformation($"Attachment URL: {attachmentUrl} (Correlation: {correlationId})");
-
+            _logger.LogInformation($"[ATTACHMENT] SharePoint REST API URL: {attachmentUrl} (Correlation: {correlationId})");
+            _logger.LogInformation("Credential type: {Type}", _credential.GetType().FullName);
             // Get access token for SharePoint REST API
-            // The credential already uses CLIENT_ID and CLIENT_SECRET from settings
             var sharePointScope = $"https://{new Uri(_settings.SHAREPOINT_SITE_URL).Host}/.default";
-            _logger.LogInformation($"Requesting token with scope: {sharePointScope} (Correlation: {correlationId})");
+            _logger.LogInformation($"[ATTACHMENT] Requesting token with scope: {sharePointScope} (Correlation: {correlationId})");
 
             var tokenResult = await _credential.GetTokenAsync(
                 new TokenRequestContext(new[] { sharePointScope }),
                 CancellationToken.None);
 
-            _logger.LogInformation($"Successfully obtained access token (Correlation: {correlationId})");
+            _logger.LogInformation($"[ATTACHMENT] Successfully obtained access token (Correlation: {correlationId})");
 
             // Make HTTP request to download attachment
             using var request = new HttpRequestMessage(HttpMethod.Get, attachmentUrl);
@@ -393,87 +345,111 @@ public class SharePointService : ISharePointService
 
             var response = await _httpClient.SendAsync(request);
 
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                _logger.LogWarning($"[ATTACHMENT] File not found: {fileName} (Correlation: {correlationId})");
+                return null;
+            }
+
             if (!response.IsSuccessStatusCode)
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
                 _logger.LogError(
-                    $"Failed to download attachment. Status: {response.StatusCode}, Error: {errorContent} (Correlation: {correlationId})");
+                    $"[ATTACHMENT] Download failed. Status: {response.StatusCode}, Error: {errorContent} (Correlation: {correlationId})");
                 return null;
             }
 
             var imageData = await response.Content.ReadAsByteArrayAsync();
             _logger.LogInformation(
-                $"Successfully downloaded {imageData.Length} bytes for {fileName} (Correlation: {correlationId})");
+                $"[ATTACHMENT] Successfully downloaded {imageData.Length} bytes (Correlation: {correlationId})");
 
             return imageData;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                $"Error downloading attachment {fileName} for item {listItemId}: {ex.Message} (Correlation: {correlationId})");
+                $"[ATTACHMENT] Error downloading {fileName} for item {listItemId}: {ex.Message} (Correlation: {correlationId})");
             return null;
         }
     }
 
     /// <summary>
-    ///     Alternative method: Download attachment using DefaultAzureCredential (Managed Identity)
-    ///     This method uses Managed Identity when running in Azure, falls back to other auth methods locally
+    /// Download image from SharePoint sharing URL using Graph API Drive
+    /// Extracts image name from URL and downloads directly by path
+    /// Returns both image data and content type from the response
     /// </summary>
-    public async Task<byte[]?> GetImageDataUsingManagedIdentityAsync(string listItemId, string fileName,
-        string correlationId)
+    public async Task<(byte[]? ImageData, string? ContentType)> DownloadImageFromSharePointUrlAsync(string sharePointUrl, string correlationId)
     {
         try
         {
             _logger.LogInformation(
-                $"[ManagedIdentity] Downloading attachment: {fileName} from item {listItemId} (Correlation: {correlationId})");
+                $"[DRIVE-DOWNLOAD] Downloading image from SharePoint URL: {sharePointUrl} (Correlation: {correlationId})");
 
-            // Build SharePoint REST API URL for attachment
-            var attachmentUrl =
-                $"{_settings.SHAREPOINT_SITE_URL}/_api/web/lists(guid'{_settings.SHAREPOINT_LIST_ID}')/items({listItemId})/AttachmentFiles('{Uri.EscapeDataString(fileName)}')/$value";
+            if (string.IsNullOrEmpty(sharePointUrl))
+            {
+                _logger.LogWarning($"[DRIVE-DOWNLOAD] SharePoint URL is empty (Correlation: {correlationId})");
+                return (null, null);
+            }
 
-            _logger.LogInformation($"[ManagedIdentity] Attachment URL: {attachmentUrl} (Correlation: {correlationId})");
+            if (string.IsNullOrEmpty(_settings.SHAREPOINT_DRIVE_ID))
+            {
+                _logger.LogError($"[DRIVE-DOWNLOAD] SHAREPOINT_DRIVE_ID is not configured (Correlation: {correlationId})");
+                return (null, null);
+            }
 
-            // Use DefaultAzureCredential - will use Managed Identity in Azure, local creds in dev
-            var defaultCredential = new DefaultAzureCredential();
+            // Extract image name from the SharePoint URL
+            // Format: https://nfm365.sharepoint.com/:i:/r/teams/VendorReturnProcess-024670/DamageImages/serialimage.png?...
+            var uri = new Uri(sharePointUrl);
+            var imageName = System.IO.Path.GetFileName(uri.LocalPath.Split('?')[0]);
+            
+            _logger.LogInformation($"[DRIVE-DOWNLOAD] Extracted image name: {imageName} (Correlation: {correlationId})");
 
-            // Get access token for SharePoint
-            var sharePointScope = $"https://{new Uri(_settings.SHAREPOINT_SITE_URL).Host}/.default";
-            _logger.LogInformation(
-                $"[ManagedIdentity] Requesting token with scope: {sharePointScope} (Correlation: {correlationId})");
-
-            var tokenResult = await defaultCredential.GetTokenAsync(
-                new TokenRequestContext(new[] { sharePointScope }),
+            // Get access token for Microsoft Graph
+            var graphScope = "https://graph.microsoft.com/.default";
+            var tokenResult = await _credential.GetTokenAsync(
+                new TokenRequestContext(new[] { graphScope }),
                 CancellationToken.None);
 
-            _logger.LogInformation(
-                $"[ManagedIdentity] Successfully obtained access token (Correlation: {correlationId})");
+            _logger.LogInformation($"[DRIVE-DOWNLOAD] Successfully obtained Graph API access token (Correlation: {correlationId})");
 
-            // Make HTTP request to download attachment
-            using var request = new HttpRequestMessage(HttpMethod.Get, attachmentUrl);
+            // Get the item directly by path to retrieve its content
+            var itemUrl = $"https://graph.microsoft.com/v1.0/drives/{_settings.SHAREPOINT_DRIVE_ID}/root:/{imageName}:/content";
+            _logger.LogInformation($"[DRIVE-DOWNLOAD] Downloading from: {itemUrl} (Correlation: {correlationId})");
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, itemUrl);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", tokenResult.Token);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
 
             var response = await _httpClient.SendAsync(request);
 
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                _logger.LogWarning($"[DRIVE-DOWNLOAD] Image not found in drive: {imageName} (Correlation: {correlationId})");
+                return (null, null);
+            }
+
             if (!response.IsSuccessStatusCode)
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
                 _logger.LogError(
-                    $"[ManagedIdentity] Failed to download attachment. Status: {response.StatusCode}, Error: {errorContent} (Correlation: {correlationId})");
-                return null;
+                    $"[DRIVE-DOWNLOAD] Failed to download image. Status: {response.StatusCode}, Error: {errorContent} (Correlation: {correlationId})");
+                return (null, null);
             }
 
+            // Get content type from response headers
+            var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+            
             var imageData = await response.Content.ReadAsByteArrayAsync();
             _logger.LogInformation(
-                $"[ManagedIdentity] Successfully downloaded {imageData.Length} bytes for {fileName} (Correlation: {correlationId})");
+                $"[DRIVE-DOWNLOAD] Successfully downloaded {imageData.Length} bytes from drive, Content-Type: {contentType} (Correlation: {correlationId})");
 
-            return imageData;
+            return (imageData, contentType);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                $"[ManagedIdentity] Error downloading attachment {fileName} for item {listItemId}: {ex.Message} (Correlation: {correlationId})");
-            return null;
+                $"[DRIVE-DOWNLOAD] Unexpected error downloading from SharePoint URL {sharePointUrl}: {ex.Message} (Correlation: {correlationId})");
+            return (null, null);
         }
     }
 

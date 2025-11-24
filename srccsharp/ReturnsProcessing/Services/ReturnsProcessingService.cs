@@ -86,34 +86,54 @@ public class ReturnsProcessingService : IReturnsProcessingService
 
             context.AddStep($"Retrieved list item: {qcItem.Title}");
 
-            // Step 2: Get and validate image data
-            if (string.IsNullOrEmpty(qcItem.PieceImage))
+            // Step 2: Download image from SerialImageLink or PieceImage
+            string imageSource = "unknown";
+            if (!string.IsNullOrWhiteSpace(qcItem.SerialImageLink?.Url))
             {
-                var errorMsg = "No product image found in list item";
+                // Priority 1: Use SerialImageLink.Url
+                imageSource = "SerialImageLink.Url";
+                context.ImageFileName = Path.GetFileName(new Uri(qcItem.SerialImageLink.Url).LocalPath);
+                context.AddStep($"Attempting to download from SerialImageLink: {qcItem.SerialImageLink.Url}");
+                
+                var (imageData, contentType) = await _sharePointService.DownloadImageFromSharePointUrlAsync(
+                    qcItem.SerialImageLink.Url,
+                    correlationId);
+                
+                context.ImageData = imageData;
+                context.ImageContentType = contentType ?? "application/octet-stream";
+            }
+            else if (!string.IsNullOrWhiteSpace(qcItem.PieceImage))
+            {
+                // Priority 2: Fallback to PieceImage attachment
+                imageSource = "PieceImage attachment";
+                context.ImageFileName = qcItem.PieceImage;
+                context.AddStep($"Attempting to download from PieceImage attachment: {qcItem.PieceImage}");
+                context.ImageData = await _sharePointService.GetAttachmentAsync(
+                    listItemId,
+                    qcItem.PieceImage,
+                    correlationId);
+                // For attachments, detect content type from filename extension
+                context.ImageContentType = GetContentTypeFromFileName(context.ImageFileName);
+            }
+            else
+            {
+                var errorMsg = "No image source available (SerialImageLink.Url or PieceImage required)";
                 context.AddError(errorMsg);
                 result.Status = "Failed";
                 result.ErrorMessage = errorMsg;
                 return result;
             }
-
-            context.AddStep("Downloading product image");
-            context.ImageData = await _sharePointService.GetImageDataUsingManagedIdentityAsync(
-                listItemId,
-                qcItem.PieceImage,
-                correlationId);
 
             if (context.ImageData == null || context.ImageData.Length == 0)
             {
-                var errorMsg = "Failed to download product image";
+                var errorMsg = $"Failed to download image from {imageSource}";
                 context.AddError(errorMsg);
                 result.Status = "Failed";
                 result.ErrorMessage = errorMsg;
                 return result;
             }
 
-            context.ImageFileName = qcItem.PieceImage;
-            context.ImageContentType = "image/jpeg"; // Default - could be enhanced to detect
-            context.AddStep($"Downloaded image: {context.ImageData.Length} bytes");
+            context.AddStep($"Downloaded image from {imageSource}: {context.ImageData.Length} bytes, Content-Type: {context.ImageContentType}");
 
             // Step 3: Validate file size and type
             if (context.ImageData.Length > _processingSettings.MAX_FILE_SIZE_MB * 1024 * 1024)
@@ -237,9 +257,30 @@ public class ReturnsProcessingService : IReturnsProcessingService
                     "[RETURNS-PROCESSING] Failed to update SharePoint with error status - ItemId: {ItemId}, Correlation: {CorrelationId}",
                     listItemId, correlationId);
             }
-
-            return result;
         }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Detect content type from file extension
+    /// </summary>
+    private string GetContentTypeFromFileName(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+            return "application/octet-stream";
+
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+        return extension switch
+        {
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".gif" => "image/gif",
+            ".bmp" => "image/bmp",
+            ".tiff" or ".tif" => "image/tiff",
+            ".pdf" => "application/pdf",
+            _ => "application/octet-stream"
+        };
     }
 
     /// <summary>
