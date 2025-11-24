@@ -1,10 +1,10 @@
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using WarehouseReturns.ReturnsProcessing.Services;
 using WarehouseReturns.ReturnsProcessing.Configuration;
+using WarehouseReturns.ReturnsProcessing.Services;
 
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
@@ -29,6 +29,7 @@ var host = new HostBuilder()
             options.CLIENT_SECRET = configuration["SHAREPOINT_CLIENT_SECRET"] ?? string.Empty;
             options.SHAREPOINT_SITE_URL = configuration["SHAREPOINT_SITE_URL"] ?? string.Empty;
             options.SHAREPOINT_LIST_ID = configuration["SHAREPOINT_LIST_ID"] ?? string.Empty;
+            options.SHAREPOINT_DRIVE_ID = configuration["SHAREPOINT_DRIVE_ID"] ?? string.Empty;
         });
 
         services.Configure<DocumentIntelligenceApiSettings>(configuration.GetSection("Values"));

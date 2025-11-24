@@ -64,6 +64,18 @@ public class SharePointFieldInfo
 }
 
 /// <summary>
+/// Represents a SharePoint hyperlink field with Description and Url properties
+/// </summary>
+public class HyperlinkField
+{
+    [JsonPropertyName("Description")]
+    public string? Description { get; set; }
+
+    [JsonPropertyName("Url")]
+    public string? Url { get; set; }
+}
+
+/// <summary>
 /// Vendor return entry model for SharePoint integration demo
 /// </summary>
 public class VendorReturnEntry
@@ -170,6 +182,9 @@ public class QcItem
 
     [JsonPropertyName("damageImage5Link")]
     public string? DamageImage5Link { get; set; }
+
+    [JsonPropertyName("serialImageLink")]
+    public HyperlinkField? SerialImageLink { get; set; }
 
     [JsonPropertyName("reasonCategory")]
     public string? ReasonCategory { get; set; }

@@ -155,6 +155,8 @@ public class DocumentIntelligenceFunctions
             if (string.IsNullOrWhiteSpace(requestBody))
             {
                 var errorResponse = req.CreateResponse(HttpStatusCode.BadRequest);
+                errorResponse.Headers.Add("Content-Type", "application/json");
+                errorResponse.Headers.Add("Access-Control-Allow-Origin", "*");
                 await errorResponse.WriteStringAsync("Request body cannot be empty");
                 return errorResponse;
             }
@@ -163,6 +165,8 @@ public class DocumentIntelligenceFunctions
             if (request == null)
             {
                 var errorResponse = req.CreateResponse(HttpStatusCode.BadRequest);
+                errorResponse.Headers.Add("Content-Type", "application/json");
+                errorResponse.Headers.Add("Access-Control-Allow-Origin", "*");
                 await errorResponse.WriteStringAsync("Invalid request format");
                 return errorResponse;
             }
@@ -177,6 +181,7 @@ public class DocumentIntelligenceFunctions
 
             var response = req.CreateResponse(HttpStatusCode.OK);
             response.Headers.Add("Content-Type", "application/json");
+            response.Headers.Add("Access-Control-Allow-Origin", "*");
             await response.WriteStringAsync(JsonSerializer.Serialize(result));
 
             logger.LogInformation("Document processing completed - Correlation ID: {CorrelationId}", correlationId);
@@ -187,6 +192,8 @@ public class DocumentIntelligenceFunctions
             logger.LogError(ex, "Error processing document - Correlation ID: {CorrelationId}", correlationId);
             
             var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            errorResponse.Headers.Add("Content-Type", "application/json");
+            errorResponse.Headers.Add("Access-Control-Allow-Origin", "*");
             await errorResponse.WriteStringAsync("Internal server error");
             return errorResponse;
         }
@@ -219,6 +226,8 @@ public class DocumentIntelligenceFunctions
             if (contentType == null || !contentType.StartsWith("multipart/form-data"))
             {
                 var errorResponse = req.CreateResponse(HttpStatusCode.BadRequest);
+                errorResponse.Headers.Add("Content-Type", "application/json");
+                errorResponse.Headers.Add("Access-Control-Allow-Origin", "*");
                 await errorResponse.WriteStringAsync("Request must be multipart/form-data");
                 return errorResponse;
             }
@@ -228,6 +237,8 @@ public class DocumentIntelligenceFunctions
             if (string.IsNullOrEmpty(boundary))
             {
                 var errorResponse = req.CreateResponse(HttpStatusCode.BadRequest);
+                errorResponse.Headers.Add("Content-Type", "application/json");
+                errorResponse.Headers.Add("Access-Control-Allow-Origin", "*");
                 await errorResponse.WriteStringAsync("Invalid multipart boundary");
                 return errorResponse;
             }
@@ -237,6 +248,8 @@ public class DocumentIntelligenceFunctions
             if (!formData.ContainsKey("file") || formData["file"].FileBytes == null)
             {
                 var errorResponse = req.CreateResponse(HttpStatusCode.BadRequest);
+                errorResponse.Headers.Add("Content-Type", "application/json");
+                errorResponse.Headers.Add("Access-Control-Allow-Origin", "*");
                 await errorResponse.WriteStringAsync("File is required");
                 return errorResponse;
             }
@@ -259,6 +272,7 @@ public class DocumentIntelligenceFunctions
 
             var response = req.CreateResponse(HttpStatusCode.OK);
             response.Headers.Add("Content-Type", "application/json");
+            response.Headers.Add("Access-Control-Allow-Origin", "*");
             await response.WriteStringAsync(JsonSerializer.Serialize(result));
 
             logger.LogInformation("Document file processing completed - Correlation ID: {CorrelationId}", correlationId);
@@ -269,6 +283,8 @@ public class DocumentIntelligenceFunctions
             logger.LogError(ex, "Error processing document file - Correlation ID: {CorrelationId}", correlationId);
             
             var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            errorResponse.Headers.Add("Content-Type", "application/json");
+            errorResponse.Headers.Add("Access-Control-Allow-Origin", "*");
             await errorResponse.WriteStringAsync("Internal server error");
             return errorResponse;
         }
@@ -299,6 +315,7 @@ public class DocumentIntelligenceFunctions
 
             var response = req.CreateResponse(statusCode);
             response.Headers.Add("Content-Type", "application/json");
+            response.Headers.Add("Access-Control-Allow-Origin", "*");
             await response.WriteStringAsync(JsonSerializer.Serialize(healthStatus));
 
             return response;
@@ -308,6 +325,8 @@ public class DocumentIntelligenceFunctions
             logger.LogError(ex, "Health check failed");
             
             var errorResponse = req.CreateResponse(HttpStatusCode.ServiceUnavailable);
+            errorResponse.Headers.Add("Content-Type", "application/json");
+            errorResponse.Headers.Add("Access-Control-Allow-Origin", "*");
             await errorResponse.WriteStringAsync("Service unavailable");
             return errorResponse;
         }
@@ -324,6 +343,7 @@ public class DocumentIntelligenceFunctions
     {
         var response = req.CreateResponse(HttpStatusCode.OK);
         response.Headers.Add("Content-Type", "application/json");
+        response.Headers.Add("Access-Control-Allow-Origin", "*");
         
         var openApiSpec = @"{
   ""openapi"": ""3.0.1"",
@@ -538,6 +558,7 @@ public class DocumentIntelligenceFunctions
     {
         var response = req.CreateResponse(HttpStatusCode.OK);
         response.Headers.Add("Content-Type", "text/html");
+        response.Headers.Add("Access-Control-Allow-Origin", "*");
         
         var swaggerHtml = @"<!DOCTYPE html>
 <html>
@@ -581,6 +602,21 @@ public class DocumentIntelligenceFunctions
 </html>";
         
         await response.WriteStringAsync(swaggerHtml);
+        return response;
+    }
+
+    /// <summary>
+    /// Handle CORS preflight requests for all POST endpoints
+    /// </summary>
+    [Function("HandleCorsOptions")]
+    public HttpResponseData HandleCorsOptions(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "options", Route = "{*route}")] HttpRequestData req)
+    {
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        response.Headers.Add("Access-Control-Allow-Origin", "*");
+        response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        response.Headers.Add("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept");
+        response.Headers.Add("Content-Length", "0");
         return response;
     }
 

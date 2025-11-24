@@ -72,9 +72,11 @@ public class ReturnsProcessingFunctions
             // Parse request body
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
             
-            if (string.IsNullOrWhiteSpace(requestBody))
+            if (string.IsNullOrEmpty(requestBody))
             {
                 var errorResponse = req.CreateResponse(HttpStatusCode.BadRequest);
+                errorResponse.Headers.Add("Content-Type", "application/json");
+                errorResponse.Headers.Add("Access-Control-Allow-Origin", "*");
                 await errorResponse.WriteStringAsync(JsonSerializer.Serialize(new ErrorResponse
                 {
                     Error = "Request body cannot be empty",
@@ -87,6 +89,8 @@ public class ReturnsProcessingFunctions
             if (processingRequest == null || string.IsNullOrEmpty(processingRequest.ListItemId))
             {
                 var errorResponse = req.CreateResponse(HttpStatusCode.BadRequest);
+                errorResponse.Headers.Add("Content-Type", "application/json");
+                errorResponse.Headers.Add("Access-Control-Allow-Origin", "*");
                 await errorResponse.WriteStringAsync(JsonSerializer.Serialize(new ErrorResponse
                 {
                     Error = "Invalid request format or missing ListItemId",
@@ -127,6 +131,8 @@ public class ReturnsProcessingFunctions
                 correlationId);
 
             var errorResponse = req.CreateResponse(HttpStatusCode.BadRequest);
+            errorResponse.Headers.Add("Content-Type", "application/json");
+            errorResponse.Headers.Add("Access-Control-Allow-Origin", "*");
             await errorResponse.WriteStringAsync(JsonSerializer.Serialize(new ErrorResponse
             {
                 Error = "Invalid JSON format in request body",
@@ -142,6 +148,8 @@ public class ReturnsProcessingFunctions
                 correlationId);
 
             var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            errorResponse.Headers.Add("Content-Type", "application/json");
+            errorResponse.Headers.Add("Access-Control-Allow-Origin", "*");
             await errorResponse.WriteStringAsync(JsonSerializer.Serialize(new ErrorResponse
             {
                 Error = "An unexpected error occurred during processing",
@@ -402,39 +410,39 @@ public class ReturnsProcessingFunctions
       ""ProcessingRequest"": {
         ""type"": ""object"",
         ""properties"": {
-          ""listItemId"": {
+          ""ListItemId"": {
             ""type"": ""string"",
             ""description"": ""SharePoint list item ID""
           },
-          ""correlationId"": {
+          ""CorrelationId"": {
             ""type"": ""string"",
             ""description"": ""Optional correlation ID for tracking""
           }
         },
-        ""required"": [""listItemId""]
+        ""required"": [""ListItemId""]
       },
       ""ProcessingResult"": {
         ""type"": ""object"",
         ""properties"": {
-          ""listItemId"": {
+          ""ListItemId"": {
             ""type"": ""string""
           },
-          ""serial"": {
+          ""Serial"": {
             ""type"": ""string""
           },
-          ""confidenceScore"": {
+          ""ConfidenceScore"": {
             ""type"": ""number""
           },
-          ""sku"": {
+          ""Sku"": {
             ""type"": ""string""
           },
-          ""family"": {
+          ""Family"": {
             ""type"": ""string""
           },
-          ""status"": {
+          ""Status"": {
             ""type"": ""string""
           },
-          ""correlationId"": {
+          ""CorrelationId"": {
             ""type"": ""string""
           }
         }
