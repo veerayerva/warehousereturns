@@ -1,0 +1,12 @@
+﻿
+Add these to your local.settings.json SharePoint section:
+
+"SharePoint": {
+  "TENANT_ID": "YOUR_TENANT_ID",
+  "CLIENT_ID": "YOUR_APP_CLIENT_ID",
+  "CERTIFICATE_PATH": "C:\DEV\Samples\WarehouseReturns\certs\WarehouseReturnsSharePointApp.pfx",
+  "CERTIFICATE_PASSWORD": "DevCert2024!",
+  "CERTIFICATE_THUMBPRINT": "661E740832ADA15A4641430AF41778D8ADF97109",
+  "SHAREPOINT_SITE_URL": "https://YOUR_TENANT.sharepoint.com/sites/YOUR_SITE",
+  "SHAREPOINT_LIST_ID": "YOUR_LIST_GUID"
+}
