@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Azure.Core;
@@ -9,6 +10,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Models.ODataErrors;
+using Microsoft.Identity.Client;
 using Newtonsoft.Json.Linq;
 using WarehouseReturns.ReturnsProcessing.Configuration;
 using WarehouseReturns.ReturnsProcessing.Models;
@@ -22,6 +24,7 @@ public interface ISharePointService
 {
     Task<QcItem?> GetListItemAsync(string listItemId, string correlationId);
     Task<byte[]?> GetAttachmentAsync(string listItemId, string fileName, string correlationId);
+    Task<byte[]?> GetAttachmentWithCertificateAsync(string listItemId, string correlationId);
     Task<(byte[]? ImageData, string? ContentType)> DownloadImageFromSharePointUrlAsync(string sharePointUrl, string correlationId);
     Task UpdateListItemAsync(string listItemId, ProcessingResult result, string correlationId);
     Task<bool> TestConnectionAsync();
@@ -369,6 +372,174 @@ public class SharePointService : ISharePointService
         {
             _logger.LogError(ex,
                 $"[ATTACHMENT] Error downloading {fileName} for item {listItemId}: {ex.Message} (Correlation: {correlationId})");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Download attachment from SharePoint using certificate-based authentication with MSAL
+    /// This method retrieves the SerialImage field from the list item, extracts the filename,
+    /// then downloads the attachment using ConfidentialClient with certificate for authentication
+    /// </summary>
+    public async Task<byte[]?> GetAttachmentWithCertificateAsync(string listItemId, string correlationId)
+    {
+        try
+        {
+            _logger.LogInformation(
+                $"[CERT-ATTACHMENT] Starting certificate-based attachment download for item {listItemId} (Correlation: {correlationId})");
+
+            // Step 1: Get the list item to retrieve SerialImage field
+            var site = await GetSiteAsync(correlationId);
+            if (site?.Id == null)
+            {
+                _logger.LogError($"[CERT-ATTACHMENT] Could not resolve SharePoint site (Correlation: {correlationId})");
+                return null;
+            }
+
+            var listItem = await _graphClient.Sites[site.Id]
+                .Lists[_settings.SHAREPOINT_LIST_ID]
+                .Items[listItemId]
+                .GetAsync();
+
+            if (listItem?.Fields?.AdditionalData == null)
+            {
+                _logger.LogWarning($"[CERT-ATTACHMENT] List item {listItemId} not found (Correlation: {correlationId})");
+                return null;
+            }
+
+            var fields = listItem.Fields.AdditionalData;
+            var serialImageJson = GetField<string>(fields, "SerialImage");
+
+            if (string.IsNullOrWhiteSpace(serialImageJson))
+            {
+                _logger.LogWarning($"[CERT-ATTACHMENT] SerialImage field is empty for item {listItemId} (Correlation: {correlationId})");
+                return null;
+            }
+
+            // Step 2: Extract filename from SerialImage JSON
+            var fileName = ExtractFileName(serialImageJson);
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                _logger.LogWarning($"[CERT-ATTACHMENT] Could not extract filename from SerialImage JSON: {serialImageJson} (Correlation: {correlationId})");
+                return null;
+            }
+
+            _logger.LogInformation($"[CERT-ATTACHMENT] Extracted filename from SerialImage: {fileName} (Correlation: {correlationId})");
+
+            // Step 3: Validate certificate configuration
+            if (string.IsNullOrWhiteSpace(_settings.TENANT_ID) ||
+                string.IsNullOrWhiteSpace(_settings.CLIENT_ID))
+            {
+                _logger.LogError($"[CERT-ATTACHMENT] Missing TENANT_ID or CLIENT_ID configuration (Correlation: {correlationId})");
+                return null;
+            }
+
+            X509Certificate2? cert = null;
+
+            // Load certificate from file path or find by thumbprint
+            if (!string.IsNullOrWhiteSpace(_settings.CERTIFICATE_PATH))
+            {
+                _logger.LogInformation($"[CERT-ATTACHMENT] Loading certificate from path: {_settings.CERTIFICATE_PATH} (Correlation: {correlationId})");
+                
+                if (!File.Exists(_settings.CERTIFICATE_PATH))
+                {
+                    _logger.LogError($"[CERT-ATTACHMENT] Certificate file not found: {_settings.CERTIFICATE_PATH} (Correlation: {correlationId})");
+                    return null;
+                }
+
+                cert = new X509Certificate2(
+                    _settings.CERTIFICATE_PATH,
+                    _settings.CERTIFICATE_PASSWORD,
+                    X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.Exportable);
+            }
+            else if (!string.IsNullOrWhiteSpace(_settings.CERTIFICATE_THUMBPRINT))
+            {
+                _logger.LogInformation($"[CERT-ATTACHMENT] Loading certificate by thumbprint: {_settings.CERTIFICATE_THUMBPRINT} (Correlation: {correlationId})");
+                
+                using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
+                store.Open(OpenFlags.ReadOnly);
+                var certs = store.Certificates.Find(X509FindType.FindByThumbprint, _settings.CERTIFICATE_THUMBPRINT, false);
+                
+                if (certs.Count == 0)
+                {
+                    _logger.LogError($"[CERT-ATTACHMENT] Certificate not found with thumbprint: {_settings.CERTIFICATE_THUMBPRINT} (Correlation: {correlationId})");
+                    return null;
+                }
+                
+                cert = certs[0];
+            }
+            else
+            {
+                _logger.LogError($"[CERT-ATTACHMENT] No certificate path or thumbprint configured (Correlation: {correlationId})");
+                return null;
+            }
+
+            _logger.LogInformation($"[CERT-ATTACHMENT] Certificate loaded successfully (Correlation: {correlationId})");
+
+            // Step 4: Build MSAL ConfidentialClient with certificate
+            var app = ConfidentialClientApplicationBuilder.Create(_settings.CLIENT_ID)
+                .WithTenantId(_settings.TENANT_ID)
+                .WithCertificate(cert, sendX5C: true)  // sendX5C:true includes x5c in client assertion for AAD validation
+                .Build();
+
+            // Get SharePoint tenant host from site URL
+            var siteUri = new Uri(_settings.SHAREPOINT_SITE_URL);
+            var tenantHost = siteUri.Host;
+            
+            // Acquire token for SharePoint audience: https://{tenantHost}/.default
+            string[] scopes = new[] { $"https://{tenantHost}/.default" };
+            _logger.LogInformation($"[CERT-ATTACHMENT] Requesting token with scope: {scopes[0]} (Correlation: {correlationId})");
+
+            var authResult = await app.AcquireTokenForClient(scopes).ExecuteAsync();
+            string spoToken = authResult.AccessToken;
+
+            _logger.LogInformation($"[CERT-ATTACHMENT] Successfully obtained SharePoint access token (Correlation: {correlationId})");
+
+            // Step 5: Build SharePoint REST API URL for attachment
+            // Format: {siteUrl}/_api/web/lists(guid'{listId}')/items({itemId})/AttachmentFiles('{fileName}')/$value
+            var encodedFileName = Uri.EscapeDataString(fileName);
+            var attachmentUrl =
+                $"{_settings.SHAREPOINT_SITE_URL}/_api/web/lists(guid'{_settings.SHAREPOINT_LIST_ID}')/items({listItemId})/AttachmentFiles('{encodedFileName}')/$value";
+
+            _logger.LogInformation($"[CERT-ATTACHMENT] SharePoint REST API URL: {attachmentUrl} (Correlation: {correlationId})");
+
+            // Step 6: Make HTTP request to download attachment
+            using var request = new HttpRequestMessage(HttpMethod.Get, attachmentUrl);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", spoToken);
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
+
+            var response = await _httpClient.SendAsync(request);
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                _logger.LogWarning($"[CERT-ATTACHMENT] File not found: {fileName} (Correlation: {correlationId})");
+                return null;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                _logger.LogError(
+                    $"[CERT-ATTACHMENT] Download failed. Status: {response.StatusCode}, Error: {errorContent} (Correlation: {correlationId})");
+                return null;
+            }
+
+            var imageData = await response.Content.ReadAsByteArrayAsync();
+            _logger.LogInformation(
+                $"[CERT-ATTACHMENT] Successfully downloaded {imageData.Length} bytes of {fileName} using certificate auth (Correlation: {correlationId})");
+
+            return imageData;
+        }
+        catch (MsalException msalEx)
+        {
+            _logger.LogError(msalEx,
+                $"[CERT-ATTACHMENT] MSAL authentication error: {msalEx.Message} (Correlation: {correlationId})");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                $"[CERT-ATTACHMENT] Error downloading attachment for item {listItemId} with certificate auth: {ex.Message} (Correlation: {correlationId})");
             return null;
         }
     }

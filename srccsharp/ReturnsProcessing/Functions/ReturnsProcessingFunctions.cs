@@ -1,11 +1,12 @@
+using System.Net;
+using System.Text.Json;
+using System.Web;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
 using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Enums;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
-using System.Net;
-using System.Text.Json;
 using WarehouseReturns.ReturnsProcessing.Models;
 using WarehouseReturns.ReturnsProcessing.Services;
 
@@ -20,13 +21,16 @@ namespace WarehouseReturns.ReturnsProcessing.Functions;
 public class ReturnsProcessingFunctions
 {
     private readonly IReturnsProcessingService _processingService;
+    private readonly ISharePointService _sharePointService;
     private readonly ILogger<ReturnsProcessingFunctions> _logger;
 
     public ReturnsProcessingFunctions(
         IReturnsProcessingService processingService,
+        ISharePointService sharePointService,
         ILogger<ReturnsProcessingFunctions> logger)
     {
         _processingService = processingService;
+        _sharePointService = sharePointService;
         _logger = logger;
     }
 
@@ -403,6 +407,50 @@ public class ReturnsProcessingFunctions
           }
         }
       }
+    },
+    ""/test/cert-auth"": {
+      ""get"": {
+        ""tags"": [""Testing""],
+        ""summary"": ""Test certificate-based authentication"",
+        ""description"": ""Tests downloading SharePoint attachment using certificate-based authentication with MSAL. Automatically retrieves SerialImage from the list item."",
+        ""parameters"": [
+          {
+            ""name"": ""listItemId"",
+            ""in"": ""query"",
+            ""required"": true,
+            ""schema"": {
+              ""type"": ""string""
+            },
+            ""description"": ""SharePoint list item ID""
+          }
+        ],
+        ""responses"": {
+          ""200"": {
+            ""description"": ""Certificate authentication test successful"",
+            ""content"": {
+              ""application/json"": {
+                ""schema"": {
+                  ""$ref"": ""#/components/schemas/CertAuthTestResult""
+                }
+              }
+            }
+          },
+          ""400"": {
+            ""description"": ""Missing required parameters""
+          },
+          ""404"": {
+            ""description"": ""Attachment not found or authentication failed""
+          },
+          ""500"": {
+            ""description"": ""Certificate authentication test failed""
+          }
+        },
+        ""security"": [
+          {
+            ""function_key"": []
+          }
+        ]
+      }
     }
   },
   ""components"": {
@@ -446,10 +494,117 @@ public class ReturnsProcessingFunctions
             ""type"": ""string""
           }
         }
+      },
+      ""CertAuthTestResult"": {
+        ""type"": ""object"",
+        ""properties"": {
+          ""success"": {
+            ""type"": ""boolean"",
+            ""description"": ""Whether certificate authentication was successful""
+          },
+          ""message"": {
+            ""type"": ""string"",
+            ""description"": ""Result message""
+          },
+          ""listItemId"": {
+            ""type"": ""string"",
+            ""description"": ""SharePoint list item ID""
+          },
+          ""fileSizeBytes"": {
+            ""type"": ""integer"",
+            ""description"": ""Size of downloaded attachment in bytes""
+          },
+          ""correlationId"": {
+            ""type"": ""string"",
+            ""description"": ""Correlation ID for tracking""
+          },
+          ""timestamp"": {
+            ""type"": ""string"",
+            ""format"": ""date-time"",
+            ""description"": ""Test execution timestamp""
+          }
+        }
       }
     }
   }
 }";
+    }
+
+    /// <summary>
+    /// Test certificate-based SharePoint attachment download
+    /// </summary>
+    [Function("TestCertificateAuth")]
+    [OpenApiOperation(operationId: "TestCertificateAuth", tags: new[] { "Testing" },
+        Summary = "Test certificate-based authentication",
+        Description = "Tests downloading SharePoint attachment using certificate-based authentication with MSAL")]
+    [OpenApiParameter(name: "listItemId", In = ParameterLocation.Query, Required = true, Type = typeof(string),
+        Description = "SharePoint list item ID")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object),
+        Description = "Certificate authentication test result")]
+    public async Task<HttpResponseData> TestCertificateAuth(
+        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "test/cert-auth")] HttpRequestData req)
+    {
+        var correlationId = Guid.NewGuid().ToString();
+        
+        try
+        {
+            var query = HttpUtility.ParseQueryString(req.Url.Query);
+            var listItemId = query["listItemId"];
+
+            if (string.IsNullOrEmpty(listItemId))
+            {
+                var badRequest = req.CreateResponse(HttpStatusCode.BadRequest);
+                await badRequest.WriteAsJsonAsync(new
+                {
+                    error = "Missing required parameter",
+                    details = "Query parameter 'listItemId' is required",
+                    correlationId
+                });
+                return badRequest;
+            }
+
+            _logger.LogInformation($"[TEST-CERT] Testing certificate auth - Item: {listItemId} (Correlation: {correlationId})");
+
+            var imageData = await _sharePointService.GetAttachmentWithCertificateAsync(listItemId, correlationId);
+
+            if (imageData == null)
+            {
+                var notFound = req.CreateResponse(HttpStatusCode.NotFound);
+                await notFound.WriteAsJsonAsync(new
+                {
+                    error = "Attachment not found or authentication failed",
+                    details = "Check logs for detailed error information. Ensure SerialImage field is populated and certificate is uploaded to Azure AD.",
+                    listItemId,
+                    correlationId
+                });
+                return notFound;
+            }
+
+            var response = req.CreateResponse(HttpStatusCode.OK);
+            await response.WriteAsJsonAsync(new
+            {
+                success = true,
+                message = "Certificate-based authentication successful",
+                listItemId,
+                fileSizeBytes = imageData.Length,
+                correlationId,
+                timestamp = DateTime.UtcNow
+            });
+            return response;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"[TEST-CERT] Error testing certificate auth (Correlation: {correlationId})");
+            
+            var errorResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+            await errorResponse.WriteAsJsonAsync(new
+            {
+                error = "Certificate authentication test failed",
+                details = ex.Message,
+                correlationId
+            });
+            return errorResponse;
+        }
     }
 }
 

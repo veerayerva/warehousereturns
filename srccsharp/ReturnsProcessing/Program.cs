@@ -30,6 +30,9 @@ var host = new HostBuilder()
             options.SHAREPOINT_SITE_URL = configuration["SHAREPOINT_SITE_URL"] ?? string.Empty;
             options.SHAREPOINT_LIST_ID = configuration["SHAREPOINT_LIST_ID"] ?? string.Empty;
             options.SHAREPOINT_DRIVE_ID = configuration["SHAREPOINT_DRIVE_ID"] ?? string.Empty;
+            options.CERTIFICATE_PATH = configuration["SHAREPOINT_CERTIFICATE_PATH"] ?? string.Empty;
+            options.CERTIFICATE_PASSWORD = configuration["SHAREPOINT_CERTIFICATE_PASSWORD"] ?? string.Empty;
+            options.CERTIFICATE_THUMBPRINT = configuration["SHAREPOINT_CERTIFICATE_THUMBPRINT"] ?? string.Empty;
         });
 
         services.Configure<DocumentIntelligenceApiSettings>(configuration.GetSection("Values"));

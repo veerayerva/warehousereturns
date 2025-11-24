@@ -46,6 +46,21 @@ public class SharePointSettings
     public string SHAREPOINT_DRIVE_ID { get; set; } = string.Empty;
 
     /// <summary>
+    /// Certificate thumbprint for certificate-based authentication
+    /// </summary>
+    public string CERTIFICATE_THUMBPRINT { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Certificate file path (.pfx) for certificate-based authentication
+    /// </summary>
+    public string CERTIFICATE_PATH { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Certificate password for .pfx file
+    /// </summary>
+    public string CERTIFICATE_PASSWORD { get; set; } = string.Empty;
+
+    /// <summary>
     /// Validate authentication configuration
     /// </summary>
     public bool IsValid()
