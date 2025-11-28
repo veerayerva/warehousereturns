@@ -3,7 +3,6 @@ using Azure.Core.Pipeline;
 using Azure.Core;
 using Azure;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using System.Text;
 using System.Linq;
 using WarehouseReturns.DocumentIntelligence.Configuration;
@@ -70,7 +69,7 @@ namespace WarehouseReturns.DocumentIntelligence.Services;
 /// - Azure Monitor/Application Insights: Comprehensive telemetry and performance monitoring
 /// - Azure Key Vault: Secure API key management (recommended for production)
 /// 
-/// Required Configuration (via IOptions&lt;DocumentIntelligenceSettings&gt;):
+/// Required Configuration:
 /// - DocumentIntelligenceEndpoint: Azure Cognitive Services endpoint URL
 /// - DocumentIntelligenceKey: API access key with Document Intelligence permissions
 /// - ApiVersion: Document Intelligence API version (default: 2024-11-30)
@@ -98,12 +97,12 @@ public class DocumentIntelligenceService : IDocumentIntelligenceService
     private readonly DocumentProcessingSettings _processingSettings;
 
     public DocumentIntelligenceService(
-        IOptions<DocumentIntelligenceSettings> settings,
-        IOptions<DocumentProcessingSettings> processingSettings,
+        DocumentIntelligenceSettings settings,
+        DocumentProcessingSettings processingSettings,
         ILogger<DocumentIntelligenceService> logger)
     {
-        _settings = settings.Value;
-        _processingSettings = processingSettings.Value;
+        _settings = settings;
+        _processingSettings = processingSettings;
         _logger = logger;
 
         try

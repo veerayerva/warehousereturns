@@ -1,12 +1,10 @@
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Extensions.OpenApi.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Abstractions;
-using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Configurations;
-using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Enums;
-using Microsoft.OpenApi.Models;
 using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -23,39 +21,22 @@ using WarehouseReturns.PieceInfoApi.Services;
 /// for aggregating warehouse piece information from multiple data sources.
 /// </summary>
 var host = new HostBuilder()
-    .ConfigureFunctionsWorkerDefaults()
+    .ConfigureFunctionsWebApplication(builder =>
+    {
+        builder.Services.Configure<KestrelServerOptions>(options =>
+        {
+            options.AllowSynchronousIO = true;
+        });
+    })
+    .ConfigureOpenApi()
     .ConfigureServices((context, services) =>
     {
         // ===================================================================
-        // APPLICATION INSIGHTS AND LOGGING CONFIGURATION
+        // CONFIGURATION BINDING
         // ===================================================================
-        // Application Insights is automatically configured in Azure Functions
-        
-        // ===================================================================
-        // OPENAPI/SWAGGER CONFIGURATION
-        // ===================================================================
-        services.AddSingleton<IOpenApiConfigurationOptions>(_ =>
-        {
-            var options = new OpenApiConfigurationOptions()
-            {
-                Info = new OpenApiInfo()
-                {
-                    Version = "1.0.0",
-                    Title = "PieceInfo API",
-                    Description = "API for aggregating piece information from multiple external sources",
-                    Contact = new OpenApiContact()
-                    {
-                        Name = "Warehouse Returns Team"
-                    }
-                },
-                Servers = DefaultOpenApiConfigurationOptions.GetHostNames(),
-                OpenApiVersion = OpenApiVersionType.V3,
-                IncludeRequestingHostName = true,
-                ForceHttps = false,
-                ForceHttp = false
-            };
-            return options;
-        });
+        var pieceInfoApiSettings = new PieceInfoApiSettings();
+        context.Configuration.Bind("PieceInfoApi", pieceInfoApiSettings);
+        services.AddSingleton(pieceInfoApiSettings);
         
         // Configure JSON serialization options
         services.Configure<JsonSerializerOptions>(options =>
@@ -66,32 +47,12 @@ var host = new HostBuilder()
         });
         
         // ===================================================================
-        // CONFIGURATION BINDING
-        // ===================================================================
-        var configuration = context.Configuration;
-        services.Configure<PieceInfoApiSettings>(options =>
-        {
-            options.ExternalApiBaseUrl = configuration["EXTERNAL_API_BASE_URL"] ?? "https://apim-dev.nfm.com";
-            options.OcpApimSubscriptionKey = configuration["OCP_APIM_SUBSCRIPTION_KEY"] ?? string.Empty;
-            options.ApiTimeoutSeconds = int.Parse(configuration["API_TIMEOUT_SECONDS"] ?? "30");
-            options.ApiMaxRetries = int.Parse(configuration["API_MAX_RETRIES"] ?? "3");
-            options.MaxBatchSize = int.Parse(configuration["MAX_BATCH_SIZE"] ?? "10");
-            options.WarehouseReturnsEnv = configuration["WAREHOUSE_RETURNS_ENV"] ?? "development";
-            options.VerifySsl = bool.Parse(configuration["VERIFY_SSL"] ?? "false");
-            options.LogLevel = configuration["LOG_LEVEL"] ?? "Information";
-        });
-        
-        // ===================================================================
         // HTTP CLIENT CONFIGURATION
         // ===================================================================
         services.AddHttpClient<IExternalApiService, ExternalApiService>(client =>
         {
-            var baseUrl = configuration["EXTERNAL_API_BASE_URL"] ?? "https://apim-dev.nfm.com";
-            var subscriptionKey = configuration["OCP_APIM_SUBSCRIPTION_KEY"];
-            var timeout = TimeSpan.FromSeconds(double.Parse(configuration["API_TIMEOUT_SECONDS"] ?? "30"));
-            
-            client.BaseAddress = new Uri(baseUrl);
-            client.Timeout = timeout;
+            client.BaseAddress = new Uri(pieceInfoApiSettings.ExternalApiBaseUrl);
+            client.Timeout = TimeSpan.FromSeconds(pieceInfoApiSettings.ApiTimeoutSeconds);
             
             // Standard headers for external API communication
             client.DefaultRequestHeaders.Add("Accept", "application/json");
@@ -99,20 +60,19 @@ var host = new HostBuilder()
             client.DefaultRequestHeaders.Add("Cache-Control", "no-cache");
             
             // Add subscription key for API authentication
-            if (!string.IsNullOrEmpty(subscriptionKey))
+            if (!string.IsNullOrEmpty(pieceInfoApiSettings.OcpApimSubscriptionKey))
             {
-                client.DefaultRequestHeaders.Add("Ocp-Apim-Subscription-Key", subscriptionKey);
+                client.DefaultRequestHeaders.Add("Ocp-Apim-Subscription-Key", pieceInfoApiSettings.OcpApimSubscriptionKey);
             }
         })
         .ConfigurePrimaryHttpMessageHandler(() => 
         {
-            var handler = new HttpClientHandler();
+            var handler = new HttpClientHandler
+            {
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+            };
             
-            // Enable automatic decompression for gzip and deflate responses
-            handler.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
-            
-            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("VERIFY_SSL")) && 
-                bool.Parse(Environment.GetEnvironmentVariable("VERIFY_SSL") ?? "false"))
+            if (!pieceInfoApiSettings.VerifySsl)
             {
                 handler.ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true;
             }
@@ -133,18 +93,16 @@ var host = new HostBuilder()
             .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
             .MinimumLevel.Override("System", LogEventLevel.Warning)
             .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
-            .Enrich.WithProperty("Environment", configuration["WAREHOUSE_RETURNS_ENV"] ?? "development")
+            .Enrich.WithProperty("Environment", pieceInfoApiSettings.WarehouseReturnsEnv)
             .Enrich.WithProperty("Application", "PieceInfoApi")
             .Enrich.WithProperty("Version", "1.0.0")
             .WriteTo.Console(new CompactJsonFormatter())
             .WriteTo.ApplicationInsights(
-                configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"],
+                context.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"],
                 TelemetryConverter.Traces)
             .CreateLogger();
 
-        // Configure Serilog as the logging provider
         services.AddSerilog(logger);
-        
         Log.Logger = logger;
         Log.Information("PieceInfo API starting up with Serilog configuration");
     })

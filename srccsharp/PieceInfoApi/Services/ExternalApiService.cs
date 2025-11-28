@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using System.Net;
 using System.Text.Json;
 using WarehouseReturns.PieceInfoApi.Configuration;
@@ -29,11 +28,11 @@ public class ExternalApiService : IExternalApiService
     public ExternalApiService(
         HttpClient httpClient,
         ILogger<ExternalApiService> logger,
-        IOptions<PieceInfoApiSettings> settings)
+        PieceInfoApiSettings settings)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _settings = settings.Value ?? throw new ArgumentNullException(nameof(settings));
+        _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         
         // Configure JSON serialization options
         _jsonOptions = new JsonSerializerOptions

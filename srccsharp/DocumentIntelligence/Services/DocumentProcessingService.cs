@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using System.Diagnostics;
 using WarehouseReturns.DocumentIntelligence.Configuration;
 using WarehouseReturns.DocumentIntelligence.Models;
@@ -127,25 +126,25 @@ public class DocumentProcessingService : IDocumentProcessingService
     /// <param name="blobStorageRepository">Blob storage repository for document management</param>
     /// <param name="httpClient">HTTP client for document download operations</param>
     /// <param name="logger">Structured logging service</param>
-    /// <param name="processingOptions">Document processing configuration options</param>
-    /// <param name="intelligenceOptions">Azure Document Intelligence configuration options</param>
-    /// <param name="blobOptions">Blob storage configuration options</param>
+    /// <param name="processingSettings">Document processing configuration</param>
+    /// <param name="intelligenceSettings">Azure Document Intelligence configuration</param>
+    /// <param name="blobSettings">Blob storage configuration</param>
     public DocumentProcessingService(
         IDocumentIntelligenceService documentIntelligenceService,
         IBlobStorageRepository blobStorageRepository,
         HttpClient httpClient,
         ILogger<DocumentProcessingService> logger,
-        IOptions<DocumentProcessingSettings> processingOptions,
-        IOptions<DocumentIntelligenceSettings> intelligenceOptions,
-        IOptions<BlobStorageSettings> blobOptions)
+        DocumentProcessingSettings processingSettings,
+        DocumentIntelligenceSettings intelligenceSettings,
+        BlobStorageSettings blobSettings)
     {
         _documentIntelligenceService = documentIntelligenceService ?? throw new ArgumentNullException(nameof(documentIntelligenceService));
         _blobStorageRepository = blobStorageRepository ?? throw new ArgumentNullException(nameof(blobStorageRepository));
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _processingSettings = processingOptions?.Value ?? throw new ArgumentNullException(nameof(processingOptions));
-        _intelligenceSettings = intelligenceOptions?.Value ?? throw new ArgumentNullException(nameof(intelligenceOptions));
-        _blobSettings = blobOptions?.Value ?? throw new ArgumentNullException(nameof(blobOptions));
+        _processingSettings = processingSettings ?? throw new ArgumentNullException(nameof(processingSettings));
+        _intelligenceSettings = intelligenceSettings ?? throw new ArgumentNullException(nameof(intelligenceSettings));
+        _blobSettings = blobSettings ?? throw new ArgumentNullException(nameof(blobSettings));
 
         // Configure HTTP client timeout
         _httpClient.Timeout = TimeSpan.FromSeconds(_processingSettings.AZURE_API_TIMEOUT);

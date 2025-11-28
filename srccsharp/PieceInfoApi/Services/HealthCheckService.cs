@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using WarehouseReturns.PieceInfoApi.Configuration;
 using WarehouseReturns.PieceInfoApi.Models;
 
@@ -25,13 +24,13 @@ public class HealthCheckService : IHealthCheckService
         IAggregationService aggregationService,
         ILogger<HealthCheckService> logger,
         IConfiguration configuration,
-        IOptions<PieceInfoApiSettings> settings)
+        PieceInfoApiSettings settings)
     {
         _externalApiService = externalApiService ?? throw new ArgumentNullException(nameof(externalApiService));
         _aggregationService = aggregationService ?? throw new ArgumentNullException(nameof(aggregationService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
-        _settings = settings.Value ?? throw new ArgumentNullException(nameof(settings));
+        _settings = settings ?? throw new ArgumentNullException(nameof(settings));
     }
 
     /// <summary>

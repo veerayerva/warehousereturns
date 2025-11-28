@@ -1,7 +1,6 @@
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using System.Text;
 using System.Text.Json;
 using WarehouseReturns.DocumentIntelligence.Configuration;
@@ -23,10 +22,10 @@ public class BlobStorageRepository : IBlobStorageRepository
     private readonly BlobStorageSettings _settings;
 
     public BlobStorageRepository(
-        IOptions<BlobStorageSettings> settings,
+        BlobStorageSettings settings,
         ILogger<BlobStorageRepository> logger)
     {
-        _settings = settings.Value;
+        _settings = settings;
         _logger = logger;
 
         try

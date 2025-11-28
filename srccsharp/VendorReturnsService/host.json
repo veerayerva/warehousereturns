@@ -1,0 +1,26 @@
+{
+    "version": "2.0",
+    "logging": {
+        "applicationInsights": {
+            "samplingSettings": {
+                "isEnabled": true,
+                "excludedTypes": "Request"
+            },
+            "enableLiveMetricsFilters": true
+        }
+    },
+    "extensions": {
+        "http": {
+            "routePrefix": "api"
+        },
+        "openApi": {
+            "info": {
+                "version": "1.0.0",
+                "title": "VendorReturnsService API",
+                "description": "Production-ready service for processing vendor return items from SharePoint. Integrates Document Intelligence for image analysis, PieceInfo API for data enrichment, and provides automated batch processing."
+            },
+            "forceHttps": false,
+            "forceHttp": false
+        }
+    }
+}

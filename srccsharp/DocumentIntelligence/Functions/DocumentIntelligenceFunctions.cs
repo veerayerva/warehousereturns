@@ -14,103 +14,9 @@ using WarehouseReturns.DocumentIntelligence.Services;
 namespace WarehouseReturns.DocumentIntelligence.Functions;
 
 /// <summary>
-/// Azure Functions HTTP API for enterprise document intelligence and automated field extraction services.
-/// 
-/// This class provides a comprehensive REST API for document processing operations using Azure Document Intelligence,
-/// designed for high-throughput production workloads with enterprise-grade reliability, security, and monitoring.
-/// 
-/// API Endpoints Overview:
-/// - POST /api/process-document-url: Process documents from publicly accessible URLs
-/// - POST /api/process-document-file: Process uploaded document files with multipart form support
-/// - GET /api/health: Comprehensive health check with dependency validation and performance metrics
-/// - GET /api/docs: Interactive Swagger UI documentation interface for API exploration
-/// - GET /api/swagger: OpenAPI 3.0 specification in JSON format for API integration
-/// 
-/// Enterprise Features:
-/// - Automatic request validation with detailed error responses and field-level validation messages
-/// - Correlation ID tracking for distributed system debugging and audit trail maintenance
-/// - Comprehensive structured logging with Application Insights integration and custom metrics
-/// - Content Security Policy (CSP) headers and CORS support for web application integration
-/// - Rate limiting and request throttling capabilities (configured at Azure Function App level)
-/// - Authentication support via Azure Function keys, Azure Active Directory, or custom JWT tokens
-/// - Request/response compression for optimal network performance and reduced bandwidth costs
-/// - OpenAPI 3.0 specification with detailed schemas for automated client code generation
-/// 
-/// Security Implementation:
-/// - Input validation and sanitization preventing injection attacks and malformed requests
-/// - Content-Type validation ensuring only supported document formats are processed
-/// - File size limits and timeout controls preventing resource exhaustion attacks
-/// - Secure error handling that prevents information leakage while providing actionable feedback
-/// - Request logging with PII filtering for compliance with data protection regulations
-/// 
-/// Performance Characteristics:
-/// - Asynchronous processing with cancellation token support for responsive user experiences
-/// - Memory-efficient streaming for large document processing without excessive RAM usage
-/// - Connection pooling and resource management for optimal Azure service utilization
-/// - Configurable timeout controls balancing responsiveness with processing reliability
-/// - Automatic scaling based on request volume with cold start optimization strategies
+/// HTTP-triggered functions for document analysis using Azure Document Intelligence.
+/// Processes documents from URLs or file uploads and extracts structured data.
 /// </summary>
-/// <remarks>
-/// Production Deployment Considerations:
-/// 
-/// Function App Configuration:
-/// - Enable Application Insights for comprehensive telemetry collection and alerting
-/// - Configure appropriate scaling limits based on expected request volume and processing time
-/// - Set up health check monitoring with automated alerting for service degradation
-/// - Implement proper API key management using Azure Key Vault integration
-/// - Configure CORS policies for cross-origin web application access
-/// 
-/// Monitoring and Alerting Setup:
-/// - Request rate monitoring with alerts for unusual traffic patterns or potential attacks
-/// - Error rate tracking with automated escalation for service reliability issues
-/// - Performance monitoring with SLA alerting for response time degradation
-/// - Dependency health monitoring for Azure Document Intelligence and Blob Storage services
-/// - Cost monitoring and budget alerts for usage optimization and financial control
-/// 
-/// Integration Patterns:
-/// - Webhook notifications for asynchronous processing completion callbacks
-/// - Event Grid integration for document processing workflow orchestration
-/// - Service Bus integration for reliable message queuing and batch processing
-/// - Logic Apps integration for complex business workflow automation
-/// - Power Platform integration for low-code business application development
-/// 
-/// Example Usage:
-/// <code>
-/// // Direct HTTP client usage
-/// var client = new HttpClient();
-/// client.DefaultRequestHeaders.Add("x-functions-key", "your-function-key");
-/// 
-/// var request = new DocumentAnalysisUrlRequest
-/// {
-///     DocumentUrl = "https://storage.blob.core.windows.net/docs/invoice.pdf",
-///     DocumentType = DocumentType.Invoice,
-///     ConfidenceThreshold = 0.85
-/// };
-/// 
-/// var response = await client.PostAsJsonAsync(
-///     "https://your-app.azurewebsites.net/api/process-document-url", 
-///     request);
-/// 
-/// // JavaScript/TypeScript frontend integration
-/// const processDocument = async (documentUrl: string) => {
-///   const response = await fetch('/api/process-document-url', {
-///     method: 'POST',
-///     headers: {
-///       'Content-Type': 'application/json',
-///       'x-functions-key': 'your-function-key'
-///     },
-///     body: JSON.stringify({
-///       document_url: documentUrl,
-///       document_type: 'product_label',
-///       confidence_threshold: 0.8
-///     })
-///   });
-///   
-///   const result = await response.json();
-///   return result;
-/// };
-/// </code>
-/// </remarks>
 public class DocumentIntelligenceFunctions
 {
     private readonly IDocumentProcessingService _documentProcessingService;
@@ -134,9 +40,9 @@ public class DocumentIntelligenceFunctions
     [OpenApiOperation(operationId: "ProcessDocumentFromUrl", tags: new[] { "Document Analysis" }, Summary = "Process Document from URL", Description = "Analyzes a document from a URL using Azure Document Intelligence and stores results in blob storage based on confidence levels. Model ID is automatically configured from settings.")]
     [OpenApiSecurity("function_key", SecuritySchemeType.ApiKey, Name = "code", In = OpenApiSecurityLocationType.Query)]
     [OpenApiRequestBody(contentType: "application/json", bodyType: typeof(DocumentAnalysisUrlRequest), Required = true, Description = "Document analysis request containing document URL (modelId is automatically configured from settings)")]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(DocumentAnalysisResponse), Summary = "Document processed successfully", Description = "Returns the analysis results with confidence scores and extracted data")]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(ErrorResponse), Summary = "Bad Request", Description = "Invalid request format or missing required fields")]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.InternalServerError, contentType: "application/json", bodyType: typeof(ErrorResponse), Summary = "Internal Server Error", Description = "Unexpected error during document processing")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(DocumentAnalysisResponse), Description = "Returns the analysis results with confidence scores and extracted data")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(ErrorResponse), Description = "Invalid request format or missing required fields")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.InternalServerError, contentType: "application/json", bodyType: typeof(ErrorResponse), Description = "Unexpected error during document processing")]
     public async Task<HttpResponseData> ProcessDocumentFromUrl(
         [HttpTrigger(AuthorizationLevel.Function, "post", Route = "process-document/url")] 
         HttpRequestData req,
@@ -205,10 +111,10 @@ public class DocumentIntelligenceFunctions
     [Function("ProcessDocumentFromFile")]
     [OpenApiOperation(operationId: "ProcessDocumentFromFile", tags: new[] { "Document Analysis" }, Summary = "Process Document from File Upload", Description = "Analyzes an uploaded document file using Azure Document Intelligence and stores results in blob storage based on confidence levels. Model ID is automatically configured from settings.")]
     [OpenApiSecurity("function_key", SecuritySchemeType.ApiKey, Name = "code", In = OpenApiSecurityLocationType.Query)]
-    [OpenApiRequestBody(contentType: "multipart/form-data", bodyType: typeof(object), Required = true, Description = "Multipart form data containing the document file (modelId is automatically configured from settings)")]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(DocumentAnalysisResponse), Summary = "Document processed successfully", Description = "Returns the analysis results with confidence scores and extracted data")]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(ErrorResponse), Summary = "Bad Request", Description = "Invalid file format or missing required fields")]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.InternalServerError, contentType: "application/json", bodyType: typeof(ErrorResponse), Summary = "Internal Server Error", Description = "Unexpected error during document processing")]
+    [OpenApiRequestBody(contentType: "multipart/form-data", bodyType: typeof(FileUploadRequest), Required = true, Description = "Multipart form data containing the document file (modelId is automatically configured from settings)")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(DocumentAnalysisResponse), Description = "Returns the analysis results with confidence scores and extracted data")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.BadRequest, contentType: "application/json", bodyType: typeof(ErrorResponse), Description = "Invalid file format or missing required fields")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.InternalServerError, contentType: "application/json", bodyType: typeof(ErrorResponse), Description = "Unexpected error during document processing")]
     public async Task<HttpResponseData> ProcessDocumentFromFile(
         [HttpTrigger(AuthorizationLevel.Function, "post", Route = "process-document/file")] 
         HttpRequestData req,
@@ -295,8 +201,8 @@ public class DocumentIntelligenceFunctions
     /// </summary>
     [Function("HealthCheck")]
     [OpenApiOperation(operationId: "HealthCheck", tags: new[] { "Health" }, Summary = "Health Check", Description = "Monitors the health status of Document Intelligence service and its dependencies including Azure Document Intelligence API and blob storage connectivity.")]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(Dictionary<string, object>), Summary = "Service is healthy", Description = "All dependencies are operational and the service is ready to process requests")]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.ServiceUnavailable, contentType: "application/json", bodyType: typeof(Dictionary<string, object>), Summary = "Service is unhealthy", Description = "One or more dependencies are unavailable or the service cannot process requests")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(HealthCheckResponse), Summary = "Service is healthy", Description = "All dependencies are operational and the service is ready to process requests")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.ServiceUnavailable, contentType: "application/json", bodyType: typeof(HealthCheckResponse), Summary = "Service is unhealthy", Description = "One or more dependencies are unavailable or the service cannot process requests")]
     public async Task<HttpResponseData> HealthCheck(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "health")] 
         HttpRequestData req,
@@ -332,293 +238,7 @@ public class DocumentIntelligenceFunctions
         }
     }
 
-    /// <summary>
-    /// Render OpenAPI document
-    /// </summary>
-    [Function("RenderOpenApiDocument")]
-    [OpenApiOperation(operationId: "RenderOpenApiDocument", tags: new[] { "Documentation" }, Summary = "Get OpenAPI specification", Description = "Retrieves the complete OpenAPI 3.0.1 specification document in JSON format for this API")]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(object), Description = "Complete OpenAPI 3.0.1 specification document")]
-    public async Task<HttpResponseData> RenderOpenApiDocument(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "swagger.json")] HttpRequestData req)
-    {
-        var response = req.CreateResponse(HttpStatusCode.OK);
-        response.Headers.Add("Content-Type", "application/json");
-        response.Headers.Add("Access-Control-Allow-Origin", "*");
-        
-        var openApiSpec = @"{
-  ""openapi"": ""3.0.1"",
-  ""info"": {
-    ""title"": ""Document Intelligence API"",
-    ""description"": ""API for document analysis using Azure Document Intelligence with blob storage integration. This service processes various document types and extracts structured information using AI-powered document analysis capabilities."",
-    ""version"": ""1.0.0"",
-    ""contact"": {
-      ""name"": ""Warehouse Returns Team""
-    }
-  },
-  ""servers"": [
-    {
-      ""url"": ""http://localhost:7075/api"",
-      ""description"": ""Development server""
-    }
-  ],
-  ""paths"": {
-    ""/process-document/url"": {
-      ""post"": {
-        ""tags"": [""Document Analysis""],
-        ""summary"": ""Process Document from URL"",
-        ""description"": ""Analyzes a document from a URL using Azure Document Intelligence and stores results in blob storage based on confidence levels. Model ID is automatically configured from settings."",
-        ""operationId"": ""ProcessDocumentFromUrl"",
-        ""requestBody"": {
-          ""required"": true,
-          ""content"": {
-            ""application/json"": {
-              ""schema"": {
-                ""$ref"": ""#/components/schemas/DocumentAnalysisUrlRequest""
-              }
-            }
-          }
-        },
-        ""responses"": {
-          ""200"": {
-            ""description"": ""Document processed successfully"",
-            ""content"": {
-              ""application/json"": {
-                ""schema"": {
-                  ""$ref"": ""#/components/schemas/DocumentAnalysisResponse""
-                }
-              }
-            }
-          },
-          ""400"": {
-            ""description"": ""Bad Request"",
-            ""content"": {
-              ""application/json"": {
-                ""schema"": {
-                  ""$ref"": ""#/components/schemas/ErrorResponse""
-                }
-              }
-            }
-          },
-          ""500"": {
-            ""description"": ""Internal Server Error"",
-            ""content"": {
-              ""application/json"": {
-                ""schema"": {
-                  ""$ref"": ""#/components/schemas/ErrorResponse""
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    ""/process-document/file"": {
-      ""post"": {
-        ""tags"": [""Document Analysis""],
-        ""summary"": ""Process Document from File Upload"",
-        ""description"": ""Analyzes an uploaded document file using Azure Document Intelligence and stores results in blob storage based on confidence levels. Model ID and confidence threshold are automatically configured from settings."",
-        ""operationId"": ""ProcessDocumentFromFile"",
-        ""requestBody"": {
-          ""required"": true,
-          ""content"": {
-            ""multipart/form-data"": {
-              ""schema"": {
-                ""type"": ""object"",
-                ""properties"": {
-                  ""file"": {
-                    ""type"": ""string"",
-                    ""format"": ""binary"",
-                    ""description"": ""Document file to analyze. Model ID and confidence threshold are automatically configured from settings.""
-                  }
-                },
-                ""required"": [""file""]
-              }
-            }
-          }
-        },
-        ""responses"": {
-          ""200"": {
-            ""description"": ""Document processed successfully"",
-            ""content"": {
-              ""application/json"": {
-                ""schema"": {
-                  ""$ref"": ""#/components/schemas/DocumentAnalysisResponse""
-                }
-              }
-            }
-          },
-          ""400"": {
-            ""description"": ""Bad Request"",
-            ""content"": {
-              ""application/json"": {
-                ""schema"": {
-                  ""$ref"": ""#/components/schemas/ErrorResponse""
-                }
-              }
-            }
-          },
-          ""500"": {
-            ""description"": ""Internal Server Error"",
-            ""content"": {
-              ""application/json"": {
-                ""schema"": {
-                  ""$ref"": ""#/components/schemas/ErrorResponse""
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    ""/health"": {
-      ""get"": {
-        ""tags"": [""Health""],
-        ""summary"": ""Health Check"",
-        ""description"": ""Monitors the health status of Document Intelligence service and its dependencies."",
-        ""operationId"": ""HealthCheck"",
-        ""responses"": {
-          ""200"": {
-            ""description"": ""Service is healthy"",
-            ""content"": {
-              ""application/json"": {
-                ""schema"": {
-                  ""type"": ""object""
-                }
-              }
-            }
-          },
-          ""503"": {
-            ""description"": ""Service is unhealthy"",
-            ""content"": {
-              ""application/json"": {
-                ""schema"": {
-                  ""type"": ""object""
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  },
-  ""components"": {
-    ""schemas"": {
-      ""DocumentAnalysisUrlRequest"": {
-        ""type"": ""object"",
-        ""properties"": {
-          ""documentUrl"": {
-            ""type"": ""string"",
-            ""format"": ""uri"",
-            ""description"": ""The URL where the document is hosted (must be publicly accessible). Model ID and confidence threshold are automatically configured from settings.""
-          }
-        },
-        ""required"": [""documentUrl""]
-      },
-      ""DocumentAnalysisResponse"": {
-        ""type"": ""object"",
-        ""properties"": {
-          ""documentId"": {
-            ""type"": ""string""
-          },
-          ""confidence"": {
-            ""type"": ""number""
-          },
-          ""extractedData"": {
-            ""type"": ""object""
-          }
-        }
-      },
-      ""ErrorResponse"": {
-        ""type"": ""object"",
-        ""properties"": {
-          ""error"": {
-            ""type"": ""string""
-          },
-          ""message"": {
-            ""type"": ""string""
-          }
-        }
-      }
-    }
-  }
-}";
-        
-        await response.WriteStringAsync(openApiSpec);
-        return response;
-    }
 
-    /// <summary>
-    /// Render interactive Swagger UI
-    /// </summary>
-    [Function("RenderSwaggerUI")]
-    [OpenApiOperation(operationId: "RenderSwaggerUI", tags: new[] { "Documentation" }, Summary = "Get interactive API documentation", Description = "Provides interactive Swagger UI for testing and exploring the API endpoints")]
-    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "text/html", bodyType: typeof(string), Description = "Interactive Swagger UI HTML page with API documentation and testing capabilities")]
-    public async Task<HttpResponseData> RenderSwaggerUI(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "swagger/ui")] HttpRequestData req)
-    {
-        var response = req.CreateResponse(HttpStatusCode.OK);
-        response.Headers.Add("Content-Type", "text/html");
-        response.Headers.Add("Access-Control-Allow-Origin", "*");
-        
-        var swaggerHtml = @"<!DOCTYPE html>
-<html>
-<head>
-    <title>Document Intelligence API Documentation</title>
-    <link rel=""stylesheet"" type=""text/css"" href=""https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui.css"" />
-    <style>
-        html { box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; }
-        *, *:before, *:after { box-sizing: inherit; }
-        body { margin:0; background: #fafafa; }
-        .swagger-ui .topbar { display: none; }
-    </style>
-</head>
-<body>
-    <div id=""swagger-ui""></div>
-    <script src=""https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-bundle.js""></script>
-    <script src=""https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-standalone-preset.js""></script>
-    <script>
-        window.onload = function() {
-            const ui = SwaggerUIBundle({
-                url: '/api/swagger.json',
-                dom_id: '#swagger-ui',
-                deepLinking: true,
-                presets: [
-                    SwaggerUIBundle.presets.apis,
-                    SwaggerUIStandalonePreset
-                ],
-                plugins: [
-                    SwaggerUIBundle.plugins.DownloadUrl
-                ],
-                layout: ""StandaloneLayout"",
-                tryItOutEnabled: true,
-                supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch'],
-                docExpansion: 'list',
-                filter: true,
-                showRequestHeaders: true
-            });
-        };
-    </script>
-</body>
-</html>";
-        
-        await response.WriteStringAsync(swaggerHtml);
-        return response;
-    }
-
-    /// <summary>
-    /// Handle CORS preflight requests for all POST endpoints
-    /// </summary>
-    [Function("HandleCorsOptions")]
-    public HttpResponseData HandleCorsOptions(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "options", Route = "{*route}")] HttpRequestData req)
-    {
-        var response = req.CreateResponse(HttpStatusCode.OK);
-        response.Headers.Add("Access-Control-Allow-Origin", "*");
-        response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        response.Headers.Add("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept");
-        response.Headers.Add("Content-Length", "0");
-        return response;
-    }
 
     /// <summary>
     /// Extract boundary from multipart content type header
@@ -767,4 +387,15 @@ public class DocumentIntelligenceFunctions
         public string? ContentType { get; set; }
         public byte[]? FileBytes { get; set; }
     }
+}
+
+/// <summary>
+/// Request model for file upload (OpenAPI documentation only)
+/// </summary>
+public class FileUploadRequest
+{
+    /// <summary>
+    /// The document file to analyze
+    /// </summary>
+    public byte[] File { get; set; } = Array.Empty<byte>();
 }
